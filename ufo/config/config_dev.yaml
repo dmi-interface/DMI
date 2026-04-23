@@ -7,7 +7,7 @@ MAX_ROUND: 1  # The max round limit for completing the user request
 SLEEP_TIME: 1  # The sleep time between each step to wait for the window to be ready
 RECTANGLE_TIME: 1
 
-ACTION_SEQUENCE: False  # Whether to output the action sequence. If true, the agent may predict and execute multiple actions in one step.
+ACTION_SEQUENCE: True  # Whether to output the action sequence. If true, the agent may predict and execute multiple actions in one step.
 
 # Skip rendering visual outline on screen if not necessary
 SHOW_VISUAL_OUTLINE_ON_SCREEN: False
@@ -17,7 +17,7 @@ MAXIMIZE_WINDOW: False  # Whether to maximize the application window before the 
 JSON_PARSING_RETRY: 3  # The retry times for the json parsing
 
 SAFE_GUARD: True  # Whether to use the safe guard to prevent the model from doing sensitve operations.
-CONTROL_LIST: ["Button", "Edit", "TabItem", "Document", "ListItem", "MenuItem", "ScrollBar", "TreeItem", "Hyperlink", "ComboBox", "RadioButton", "DataItem", "Spinner", "CheckBox"]
+CONTROL_LIST: ["Button", "Edit", "TabItem", "Document", "ListItem", "MenuItem", "ScrollBar", "TreeItem", "Hyperlink", "ComboBox", "RadioButton", "DataItem", "Spinner", "CheckBox", "Image"]
 # The list of widgets that allowed to be selected, in uia backend, it will be used for filter the control_type, while in win32 backend, it will be used for filter the class_name.
 HISTORY_KEYS: ["Step", "Subtask", "Action", "UserConfirm"]  # The keys of the action history for the next step.
 
@@ -40,7 +40,7 @@ PRINT_LOG: False  # Whether to print the log
 CONCAT_SCREENSHOT: True  # Whether to concat the screenshot for the control item
 LOG_LEVEL: "DEBUG"  # The log level
 INCLUDE_LAST_SCREENSHOT: True  # Whether to include the last screenshot in the observation
-REQUEST_TIMEOUT: 250  # The call timeout for the GPT-V model
+REQUEST_TIMEOUT: 500  # The call timeout for the GPT-V model
 
 HOSTAGENT_PROMPT: "ufo/prompts/share/base/host_agent.yaml"  # The prompt for the app selection
 # Due to the limitation of input size, lite version of the prompt help users have a taste. And the path is "ufo/prompts/share/lite/host_agent.yaml"
@@ -82,8 +82,23 @@ APP_API_PROMPT_ADDRESS: {
     "chrome.exe": "ufo/prompts/apps/web/api.yaml"
 }  # The prompt address for the app API. The key is the app program name, and the value is the prompt address.
 
+# currently use word
+UI_NAVIGATION:
+  WINWORD.EXE:
+    WORD_GRAPH_FILE: "ufo/automator/ui_control/dmi_nav_topology/final_ui_navigation_graph_word_processed.json"
+    WORD_ID_MAP_FILE: "ufo/automator/ui_control/dmi_nav_topology/final_ui_navigation_graph_word_processed_id_map.json"
+  EXCEL.EXE:
+    EXCEL_GRAPH_FILE: "ufo/automator/ui_control/dmi_nav_topology/final_ui_navigation_graph_excel_processed.json"
+    EXCEL_ID_MAP_FILE: "ufo/automator/ui_control/dmi_nav_topology/final_ui_navigation_graph_excel_processed_id_map.json"
+  POWERPNT.EXE:
+    POWERPOINT_GRAPH_FILE: "ufo/automator/ui_control/dmi_nav_topology/final_ui_navigation_graph_powerpoint_processed.json"
+    POWERPOINT_ID_MAP_FILE: "ufo/automator/ui_control/dmi_nav_topology/final_ui_navigation_graph_powerpoint_processed_id_map.json"
+
+# not used
 WORD_API_PROMPT: "ufo/prompts/apps/word/api.yaml"  # The prompt for the word API
 EXCEL_API_PROMPT: "ufo/prompts/apps/excel/api.yaml"  # The prompt for the word API
+
+
 
 # For control filtering
 #'TEXT' for only rich text filter, 'SEMANTIC' for only semantic similarity match, 'ICON' for only icon match
@@ -94,6 +109,7 @@ CONTROL_FILTER_TOP_K_ICON: 15  # The control filter top k for icon similarity
 CONTROL_FILTER_MODEL_SEMANTIC_NAME: "all-MiniLM-L6-v2"  # The control filter model name of semantic similarity
 CONTROL_FILTER_MODEL_ICON_NAME: "clip-ViT-B-32"  # The control filter model name of icon similarity
 
+#LOG_XML: True  # Whether to log the xml file for the at every step.
 LOG_XML: False  # Whether to log the xml file for the at every step.
 LOG_TO_MARKDOWN: True  # Whether to save the log to markdown file for better visualization.
 SCREENSHOT_TO_MEMORY: True  # Whether to allow the screenshot to memory for the agent's decision making.
@@ -106,11 +122,12 @@ QA_PAIR_FILE: "customization/historical_qa.txt"  # The path for the historical Q
 QA_PAIR_NUM: 20  # The number of QA pairs for the customization
 
 # For the evaluation
-EVA_SESSION: True  # Whether to include the session in the evaluation
+EVA_SESSION: False  # Whether to include the session in the evaluation
 EVA_ROUND: FALSE
 EVA_ALL_SCREENSHOTS: True  # Whether to include all the screenshots in the evaluation
 
 # Image saving performance
+#DEFAULT_PNG_COMPRESS_LEVEL: 9  # The compress level for the PNG image, 0-9, 0 is no compress, 1 is the fastest, 9 is the best compress
 DEFAULT_PNG_COMPRESS_LEVEL: 1  # The compress level for the PNG image, 0-9, 0 is no compress, 1 is the fastest, 9 is the best compress
 
 

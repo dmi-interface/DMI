@@ -208,7 +208,7 @@ class Blackboard:
         """
 
         user_content = [
-            {"type": "text", "text": f"{prefix}\n {json.dumps(memory.list_content)}"}
+            {"type": "text", "text": f"{prefix}\n {json.dumps(memory.list_content, ensure_ascii=False)}"}
         ]
 
         return user_content
@@ -225,7 +225,7 @@ class Blackboard:
                 {
                     "type": "text",
                     "text": json.dumps(
-                        screenshot_dict.get(ImageMemoryItemNames.METADATA, "")
+                        screenshot_dict.get(ImageMemoryItemNames.METADATA, ""), ensure_ascii=False
                     ),
                 }
             )
@@ -259,7 +259,7 @@ class Blackboard:
         Convert the blackboard to a JSON string.
         :return: The JSON string.
         """
-        return json.dumps(self.blackboard_to_dict())
+        return json.dumps(self.blackboard_to_dict(), ensure_ascii=False)
 
     def blackboard_from_dict(
         self, blackboard_dict: Dict[str, List[Dict[str, str]]]

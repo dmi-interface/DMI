@@ -13,6 +13,9 @@ from pywinauto.controls.uiawrapper import UIAWrapper
 from pywinauto.win32structures import RECT
 
 from ufo.automator.basic import CommandBasic, ReceiverBasic, ReceiverFactory
+# Add import at the top of file
+import ufo.automator.ui_control.dmi as ui_nav
+from ufo.automator.ui_control.inspector import ControlInspectorFacade
 from ufo.automator.puppeteer import ReceiverManager
 from ufo.config.config import Config
 from ufo.utils import print_with_color
@@ -44,12 +47,17 @@ class ControlReceiver(ReceiverBasic):
 
         self.control = control
         self.application = application
+        self._current_annotation_dict = None  # Add this attribute
 
         if control:
             self.control.set_focus()
             self.wait_enabled()
         elif application:
             self.application.set_focus()
+
+    def set_annotation_dict(self, annotation_dict: Dict[str, UIAWrapper]) -> None:
+        """Set the current annotation_dict"""
+        self._current_annotation_dict = annotation_dict
 
     @property
     def type_name(self):
@@ -173,6 +181,8 @@ class ControlReceiver(ReceiverBasic):
         inter_key_pause = configs.get("INPUT_TEXT_INTER_KEY_PAUSE", 0.1)
 
         if params.get("clear_current_text", False):
+            # Consider adding click_input() here, otherwise focus will easily be misaligned
+            #self.control.click_input()
             self.control.type_keys("^a", pause=inter_key_pause)
             self.control.type_keys("{DELETE}", pause=inter_key_pause)
 
@@ -255,7 +265,14 @@ class ControlReceiver(ReceiverBasic):
         Get the text of the control element.
         :return: The text of the control element.
         """
-        return self.control.texts()
+        print("!!!!!!!debug: texts()",self.control.element_info.name, self.control.element_info.control_type) #, self.control.texts()
+        # print("!!!!!!!debug: window_text", self.control.window_text())
+        # Use the new comprehensive text retrieval method
+        text_content = ControlInspectorFacade.get_texts(self.control, max_length=10000)  # Can adjust max_length
+        return text_content
+
+        # return self.control.texts()
+
 
     def wheel_mouse_input(self, params: Dict[str, str]):
         """
@@ -425,6 +442,168 @@ class ControlReceiver(ReceiverBasic):
 
         return int(raw_x), int(raw_y)
 
+
+    # General UIA control pattern handling functions
+    # Add new method in ControlReceiver class
+    def scroll_to_percent(self, params: Dict[str, str]) -> str:
+        """
+        Scroll the scrollbar/scrollable container to a specified percentage
+        :param params: Dictionary containing percentage parameters
+        :return: Execution result
+        """
+        try:
+            horiz_percent = params.get("horiz_percent", -1)
+            vert_percent = params.get("vert_percent", -1)
+            max_parent_hops = int(params.get("max_parent_hops", 4))
+
+            # Convert to float type
+            if horiz_percent != -1:
+                horiz_percent = float(horiz_percent)
+            if vert_percent != -1:
+                vert_percent = float(vert_percent)
+
+            # Call ui_nav module functions
+            ui_nav.scroll_to_percent(
+                ctrl=self.control,
+                horiz_percent=horiz_percent,
+                vert_percent=vert_percent,
+                max_parent_hops=max_parent_hops
+            )
+
+            return f"Successfully scrolled to horiz: {horiz_percent}%, vert: {vert_percent}%"
+
+        except Exception as e:
+            return f"Failed to scroll to percent. Error: {str(e)}"
+
+
+    # Add new method in ControlReceiver class
+    def select_line(self, params: Dict[str, str]) -> str:
+        """
+        Precisely select specified lines or line ranges
+        :param params: Dictionary containing line number parameters
+        :return: Execution result
+        """
+        try:
+            start_line = int(params.get("start_line", 1))
+            end_line = params.get("end_line", None)
+            if end_line is not None:
+                end_line = int(end_line)
+            # Compatible with multiple input formats
+            ne_val = params.get("non_empty", True)
+            if isinstance(ne_val, str):
+                non_empty = ne_val.strip().lower() in ("1", "true", "yes", "y", "on")
+            else:
+                non_empty = bool(ne_val)
+
+
+            # Call ui_nav module functions
+            # select_line_fixed
+            result = ui_nav.select_line(
+                control=self.control,
+                start_line=start_line,
+                end_line=end_line,
+                non_empty=non_empty
+            )
+
+            if result["success"]:
+                return f"Successfully selected line {result['start_line']}-{result['end_line']}: {result['selected_text'][:50]}..."
+            else:
+                return f"Failed to select line: {result['error']}"
+
+        except Exception as e:
+            return f"Failed to select line. Error: {str(e)}"
+
+
+    def select_paragraph(self, params: Dict[str, str]) -> str:
+        """
+        Precisely select specified paragraphs or paragraph ranges
+        :param params: Dictionary containing paragraph number parameters
+        :return: Execution result
+        """
+        try:
+            start_paragraph = int(params.get("start_paragraph", 1))
+            end_paragraph = params.get("end_paragraph", None)
+            if end_paragraph is not None:
+                end_paragraph = int(end_paragraph)
+            # Compatible with multiple input formats
+            ne_val = params.get("non_empty", True)
+            if isinstance(ne_val, str):
+                non_empty = ne_val.strip().lower() in ("1", "true", "yes", "y", "on")
+            else:
+                non_empty = bool(ne_val)
+
+            # Call ui_nav module functions
+            # select_paragraph_fixed
+            result = ui_nav.select_paragraph(
+                control=self.control,
+                start_paragraph=start_paragraph,
+                end_paragraph=end_paragraph,
+                non_empty=non_empty
+            )
+
+            if result["success"]:
+                return f"Successfully selected paragraph {result['start_paragraph']}-{result['end_paragraph']}: {result['selected_text'][:50]}..."
+            else:
+                return f"Failed to select paragraph: {result['error']}"
+
+        except Exception as e:
+            return f"Failed to select paragraph. Error: {str(e)}"
+
+    def select_controls(self, params: Dict[str, str], annotation_dict: Dict[str, UIAWrapper] = None) -> str:
+        """
+        Select multiple controls
+        :param params: Dictionary containing list of control labels
+        :param annotation_dict: Control dictionary for parsing control identifiers
+        :return: Execution result
+        """
+
+        try:
+
+            # Get control label list from parameters
+            control_label_list = params.get("control_label_list", [])
+
+            if not control_label_list:
+                return "Error: control_label_list parameter is required and cannot be empty"
+
+            # If annotation_dict is not passed, use the stored one
+            if annotation_dict is None:
+                annotation_dict = self._current_annotation_dict
+
+            if not annotation_dict:
+                return "Error: annotation_dict is required for select_controls operation"
+
+            # Get control objects by labels
+            controls = []
+            invalid_labels = []
+
+            for label in control_label_list:
+                if str(label) in annotation_dict:
+                    controls.append(annotation_dict[str(label)])
+                else:
+                    invalid_labels.append(label)
+
+            if invalid_labels:
+                return f"Error: Invalid control labels found: {invalid_labels}"
+
+            if not controls:
+                return "Error: No valid controls found for the given labels"
+
+            # Call ui_nav module functions
+            result = ui_nav.select_controls(controls=controls)
+
+            if result["success"]:
+                selected_count = result.get("selected_count", 0)
+                total_count = result.get("total_count", 0)
+                method = result.get("method", "unknown")
+                return f"Successfully selected {selected_count}/{total_count} controls using {method} method"
+            else:
+                error_msg = result.get("error", "Unknown error")
+                failed_control = result.get("failed_control", "")
+                failure_reason = result.get("failure_reason", "")
+                return f"Failed to select controls: {error_msg}. {failure_reason}"
+
+        except Exception as e:
+            return f"Failed to select controls. Error: {str(e)}"
 
 @ReceiverManager.register
 class UIControlReceiverFactory(ReceiverFactory):
@@ -1061,6 +1240,104 @@ class WaitCommand(ControlCommand):
         """
         return "wait"
 
+# Add command classes at the end of file
+@ControlReceiver.register
+class ScrollToPercentCommand(ControlCommand):
+    """
+    Command class for scrolling to specified percentage position
+    """
+
+    def execute(self) -> str:
+        """
+        Execute scroll to percentage command
+        :return: Execution result
+        """
+        return self.receiver.scroll_to_percent(self.params)
+
+    @classmethod
+    def name(cls) -> str:
+        """
+        Get command name
+        :return: Command name
+        """
+        return "scroll_to_percent"
+
+@ControlReceiver.register
+class SelectLineCommand(ControlCommand):
+    """
+    Command class for selecting specified lines or line ranges
+    """
+
+    def execute(self) -> str:
+        """
+        Execute select line command
+        :return: Execution result
+        """
+        return self.receiver.select_line(self.params)
+
+    @classmethod
+    def name(cls) -> str:
+        """
+        Get command name
+        :return: Command name
+        """
+        return "select_line"
+
+@ControlReceiver.register
+class SelectParagraphCommand(ControlCommand):
+    """
+    Command class for selecting specified paragraphs or paragraph ranges
+    """
+
+    def execute(self) -> str:
+        """
+        Execute select paragraph command
+        :return: Execution result
+        """
+        return self.receiver.select_paragraph(self.params)
+
+    @classmethod
+    def name(cls) -> str:
+        """
+        Get command name
+        :return: Command name
+        """
+        return "select_paragraph"
+
+@ControlReceiver.register
+class SelectControlsCommand(ControlCommand):
+    """
+    Command class for selecting multiple controls
+    """
+    def __init__(
+        self,
+        receiver: ControlReceiver,
+        params: Dict[str, str],
+        annotation_dict: Dict[str, UIAWrapper] = None,
+    ) -> None:
+        """
+        Initialize select controls command
+        :param receiver: Command receiver
+        :param params: Parameter dictionary
+        :param annotation_dict: Control dictionary
+        """
+        super().__init__(receiver, params)
+        self.annotation_dict = annotation_dict
+
+    def execute(self) -> str:
+        """
+        Execute select controls command
+        :return: Execution result
+        """
+        return self.receiver.select_controls(self.params, self.annotation_dict)
+
+    @classmethod
+    def name(cls) -> str:
+        """
+        Get command name
+        :return: Command name
+        """
+        return "select_controls"
 
 class TextTransformer:
     """

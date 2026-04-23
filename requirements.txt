@@ -3,12 +3,12 @@ colorama==0.4.6
 langchain==0.3.24
 langchain_community==0.3.22
 msal==1.31.0
-openai==1.66.2
+openai==1.101.0
 Pillow==10.3.0
 pywin32==306
 pywinauto==0.6.8
 PyYAML==6.0.1
-requests==2.32.3
+requests==2.32.4
 faiss-cpu==1.8.0
 numpy==1.26.4
 lxml==5.1.0

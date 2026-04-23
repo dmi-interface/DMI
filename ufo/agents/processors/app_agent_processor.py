@@ -25,7 +25,7 @@ configs = Config.get_instance().config_data
 if configs is not None:
     CONTROL_BACKEND = configs.get("CONTROL_BACKEND", ["uia"])
     BACKEND = "win32" if "win32" in CONTROL_BACKEND else "uia"
-
+    print("current backend is ", BACKEND)
 
 @dataclass
 class AppAgentAdditionalMemory:
@@ -76,6 +76,7 @@ class ControlInfoRecorder:
         "control_type" if BACKEND == "uia" else "control_class",
         "control_rect",
         "source",
+        "datavalue",  # Add datavalue field
     ]
 
     application_windows_info: Dict[str, Any] = field(default_factory=dict)
@@ -304,7 +305,7 @@ class AppAgentProcessor(BaseProcessor):
 
         # Get the annotation dictionary for the control items, in a format of {control_label: control_element}.
         self._annotation_dict = self.photographer.get_annotation_dict(
-            self.application_window, control_list, annotation_type="number"
+            self.application_window, control_list, annotation_type="letter"#annotation_type="number"
         )
 
         # Attempt to filter out irrelevant control items based on the previous plan.
@@ -316,7 +317,8 @@ class AppAgentProcessor(BaseProcessor):
         self.photographer.capture_app_window_screenshot_with_annotation_dict(
             self.application_window,
             self.filtered_annotation_dict,
-            annotation_type="number",
+            # annotation_type="number",
+            annotation_type="letter",
             save_path=annotated_screenshot_save_path,
         )
 
@@ -341,7 +343,7 @@ class AppAgentProcessor(BaseProcessor):
 
             # Capture the desktop screenshot for all screens.
             self.photographer.capture_desktop_screen_screenshot(
-                all_screens=True, save_path=desktop_save_path
+                all_screens=False, save_path=desktop_save_path
             )
 
         # If the configuration is set to include the last screenshot with selected controls tagged, save the last screenshot.
@@ -394,7 +396,7 @@ class AppAgentProcessor(BaseProcessor):
         # Get the control information for the control items and the filtered control items, in a format of list of dictionaries.
         self._control_info = self.control_inspector.get_control_info_list_of_dict(
             self._annotation_dict,
-            ["control_text", "control_type" if BACKEND == "uia" else "control_class"],
+            ["control_text", "control_type" if BACKEND == "uia" else "control_class", "datavalue"],
         )
         self.filtered_control_info = (
             self.control_inspector.get_control_info_list_of_dict(
@@ -402,9 +404,13 @@ class AppAgentProcessor(BaseProcessor):
                 [
                     "control_text",
                     "control_type" if BACKEND == "uia" else "control_class",
+                    "datavalue",
                 ],
             )
         )
+        # compress DataItem
+        self._control_info = self.control_inspector.compress_dataitem_controls(self._control_info)
+        self.filtered_control_info = self.control_inspector.compress_dataitem_controls(self.filtered_control_info)
 
     @BaseProcessor.exception_capture
     @BaseProcessor.method_timer
@@ -490,6 +496,25 @@ class AppAgentProcessor(BaseProcessor):
         request_log_str = json.dumps(asdict(request_data), ensure_ascii=False)
         self.request_logger.debug(request_log_str)
 
+        # print(f"\n🔍 Debug: ===== Inspecting the control information passed to the LLM =====")
+        # print(f"🔍 Debug: Total number of filtered_control_info items: {len(self.filtered_control_info)}")
+        #
+        # dataitem_count = 0
+        # for i, control in enumerate(self.filtered_control_info):
+        #     if control.get("control_type") == "DataItem":
+        #         dataitem_count += 1
+        #         print(f"\n📋 Debug: DataItem control #{dataitem_count} (index {i}):")
+        #         print(f"📋 Debug: Full details: {control}")
+        #
+        #         if "datavalue" in control:
+        #             print(f"✅ Debug: Contains 'datavalue' field: {repr(control['datavalue'])}")
+        #         else:
+        #             print(f"❌ Debug: Missing 'datavalue' field!")
+        #             print(f"📋 Debug: Available fields: {list(control.keys())}")
+        #
+        # if dataitem_count == 0:
+        #     print(f"❌ Debug: No DataItem controls found")
+
     @BaseProcessor.exception_capture
     @BaseProcessor.method_timer
     def get_response(self) -> None:
@@ -541,9 +566,12 @@ class AppAgentProcessor(BaseProcessor):
         """
         Execute the action.
         """
-
+        # get newest application_window
+        args = self._args.copy()
+        args["application_window"] = self.application_window
         action = OneStepAction(
             function=self._operation,
+            # args=args,
             args=self._args,
             control_label=self._control_label,
             control_text=self.control_text,

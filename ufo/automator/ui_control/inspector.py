@@ -16,7 +16,14 @@ import uiautomation as auto
 from pywinauto import Desktop
 from pywinauto.controls.uiawrapper import UIAWrapper
 from pywinauto.uia_element_info import UIAElementInfo
+from comtypes.gen import UIAutomationClient as UAC
+from comtypes import COMObject
+import comtypes.gen.UIAutomationClient as UIA_event
 
+class DummyFocusHandler(COMObject):
+    _com_interfaces_ = [UIA_event.IUIAutomationFocusChangedEventHandler]
+    def HandleFocusChangedEvent(self, sender):
+        pass
 
 from ufo.config.config import Config
 
@@ -64,8 +71,8 @@ class BackendStrategy(ABC):
         control_type_list: List[str] = [],
         class_name_list: List[str] = [],
         title_list: List[str] = [],
-        is_visible: bool = True,
-        is_enabled: bool = True,
+        is_visible: Optional[bool] = True,
+        is_enabled: Optional[bool] = True,
         depth: int = 0,
     ) -> List[UIAWrapper]:
         """
@@ -85,6 +92,9 @@ class BackendStrategy(ABC):
 
 class UIAElementInfoFix(UIAElementInfo):
     _cached_rect = None
+    # Add new fields
+    _cached_full_description = None
+    _cached_automation_id = None
     _time_delay_marker = False
 
     def __init__(self, element, is_ref=False, source: Optional[str] = None):
@@ -164,12 +174,46 @@ class UIAElementInfoFix(UIAElementInfo):
     def source(self):
         return self._source
 
+    @_time_wrap
+    def _get_current_full_description(self):
+        # Call UIA interface to get real-time values
+        return super()._get_current_property(
+            pywinauto.uia_defines.IUIA().UIA_dll.UIA_FullDescriptionPropertyId)
+
+    @_time_wrap
+    def _get_current_automation_id(self):
+        return super()._get_current_property(
+            pywinauto.uia_defines.IUIA().UIA_dll.UIA_AutomationIdPropertyId)
+
+    @property
+    def automation_id(self):
+        if self._cached_automation_id is None:
+            self._cached_automation_id = self._get_current_automation_id() or ""
+        return self._cached_automation_id
+
+    @property
+    def full_description(self):
+        if self._cached_full_description is None:
+            self._cached_full_description = self._get_current_full_description() or ""
+        return self._cached_full_description
+
 
 class UIABackendStrategy(BackendStrategy):
     """
     The backend strategy for UIA.
     """
+    def __init__(self):
+        iuia_com, _ = UIABackendStrategy._get_uia_defs()
+        self._focus_handler = DummyFocusHandler()
+        iuia_com.AddFocusChangedEventHandler(None, self._focus_handler)
 
+    def __del__(self):
+        try:
+            iuia_com, _ = UIABackendStrategy._get_uia_defs()
+            iuia_com.RemoveFocusChangedEventHandler(self._focus_handler)
+        except Exception:
+            pass
+        
     def get_desktop_windows(self, remove_empty: bool) -> List[UIAWrapper]:
         """
         Get all the apps on the desktop.
@@ -203,8 +247,8 @@ class UIABackendStrategy(BackendStrategy):
         control_type_list: List[str] = [],
         class_name_list: List[str] = [],
         title_list: List[str] = [],
-        is_visible: bool = True,
-        is_enabled: bool = True,
+        is_visible: Optional[bool] = True,
+        is_enabled: Optional[bool] = True,
         depth: int = 0,
     ) -> List[UIAWrapper]:
         """
@@ -254,16 +298,22 @@ class UIABackendStrategy(BackendStrategy):
                 elem.CachedControlType,
                 elem.CachedName,
                 elem.CachedBoundingRectangle,
+                # Add a new field
+                getattr(elem, 'CachedAutomationId', ''),
+                # getattr(elem, 'CachedFullDescription', ''),
+                # (lambda e: e.GetCachedPropertyValue(30159) if hasattr(e, 'GetCachedPropertyValue') else '')(elem) or '',
+                (lambda e: e.GetCachedPropertyValue(iuia_dll.UIA_FullDescriptionPropertyId) if hasattr(e, 'GetCachedPropertyValue') else '')(elem) or '',
             )
             for elem in (
                 com_elem_array.GetElement(n)
-                for n in range(min(com_elem_array.Length, 500))
+                # for n in range(min(com_elem_array.Length, 500))
+                for n in range(min(com_elem_array.Length, 1000))
             )
         ]
 
         control_elements: List[UIAWrapper] = []
 
-        for elem, elem_type, elem_name, elem_rect in elem_info_list:
+        for elem, elem_type, elem_name, elem_rect, elem_auto_id, elem_full_desc in elem_info_list:
             element_info = UIAElementInfoFix(elem, True, source="uia")
             elem_type_name = UIABackendStrategy._get_uia_control_name_map().get(
                 elem_type, ""
@@ -271,9 +321,13 @@ class UIABackendStrategy(BackendStrategy):
 
             # handle is not needed, skip fetching
             element_info._cached_handle = 0
+            # element_info._cached_handle = getattr(elem, "CachedNativeWindowHandle", 0)
 
             # visibility is determined by filter condition
-            element_info._cached_visible = True
+            # element_info._cached_visible = True
+            # Only set cache when visibility is explicitly specified
+            if is_visible is not None:
+                element_info._cached_visible = is_visible
 
             # fill the values with pre-fetched data
             rect = pywinauto.win32structures.RECT()
@@ -292,14 +346,20 @@ class UIABackendStrategy(BackendStrategy):
             # class name is not used directly, could pre-fetch in future
             # element_info.class_name
 
+            # Add new fields
+            # Fill in new cache properties
+            element_info._cached_automation_id = elem_auto_id
+            element_info._cached_full_description = elem_full_desc
+                
             uia_interface = UIAWrapper(element_info)
 
             def __hash__(self):
                 return hash(self.element_info._element)
 
             # current __hash__ is not referring to a COM property (RuntimeId), which is costly to fetch
-            uia_interface.__hash__ = __hash__
-
+            # uia_interface.__hash__ = __hash__
+            # Method 2 (current version) Note: very very important modification, strict checking required
+            uia_interface.__hash__ = lambda: hash(uia_interface.element_info._element)  # Directly use specific uia_interface
             control_elements.append(uia_interface)
 
         return control_elements
@@ -322,28 +382,44 @@ class UIABackendStrategy(BackendStrategy):
         cache_request.AddProperty(iuia_dll.UIA_ControlTypePropertyId)
         cache_request.AddProperty(iuia_dll.UIA_NamePropertyId)
         cache_request.AddProperty(iuia_dll.UIA_BoundingRectanglePropertyId)
+        # Add new fields
+        cache_request.AddProperty(iuia_dll.UIA_AutomationIdPropertyId)     # 30011
+        cache_request.AddProperty(iuia_dll.UIA_FullDescriptionPropertyId)  # 30159
         return cache_request
 
     @staticmethod
     def _get_control_filter_condition(
         control_type_list: List[str] = [],
-        is_visible: bool = True,
-        is_enabled: bool = True,
+        is_visible: Optional[bool] = True,
+        is_enabled: Optional[bool] = True,
     ):
         iuia_com, iuia_dll = UIABackendStrategy._get_uia_defs()
-        condition = iuia_com.CreateAndConditionFromArray(
-            [
+
+        conditions = [
+            iuia_com.CreatePropertyCondition(
+                iuia_dll.UIA_IsControlElementPropertyId, True
+            ),
+        ]
+
+        # Only add enabled condition when is_enabled is not None
+        if is_enabled is not None:
+            conditions.append(
                 iuia_com.CreatePropertyCondition(
-                    iuia_dll.UIA_IsEnabledPropertyId, is_enabled
-                ),
+                    iuia_dll.UIA_IsEnabledPropertyId,
+                    is_enabled,
+                )
+            )
+        # Only add visibility condition when is_visible is not None
+        if is_visible is not None:
+            conditions.append(
                 iuia_com.CreatePropertyCondition(
-                    # visibility is determined by IsOffscreen property
                     iuia_dll.UIA_IsOffscreenPropertyId,
                     not is_visible,
-                ),
-                iuia_com.CreatePropertyCondition(
-                    iuia_dll.UIA_IsControlElementPropertyId, True
-                ),
+                )
+            )
+
+        if control_type_list:
+            conditions.append(
                 iuia_com.CreateOrConditionFromArray(
                     [
                         iuia_com.CreatePropertyCondition(
@@ -358,9 +434,10 @@ class UIABackendStrategy(BackendStrategy):
                         )
                         for control_type in control_type_list
                     ]
-                ),
-            ]
-        )
+                )
+            )
+
+        condition = iuia_com.CreateAndConditionFromArray(conditions)
         return condition
 
     @staticmethod
@@ -628,6 +705,181 @@ class ControlInspectorFacade:
             return None
 
     @staticmethod
+    def compress_dataitem_controls(control_info_list):
+        """
+        Compress DataItem control information to greatly reduce token usage
+
+        Strategy:
+        1. Controls with datavalue keep complete information: {"control_text": "B16", "label": "PI", "datavalue": "Jeff Tunnels"}
+        2. Empty controls compressed as tuples: ("B16", "PI")
+        3. Consecutive DataItems output grouped
+
+        :param control_info_list: Original control information list
+        :return: Compressed control information list
+        """
+        compressed_info = []
+        dataitem_buffer = []
+
+        for control in control_info_list:
+            if control.get("control_type") == "DataItem":
+                # Collect DataItem information
+                control_text = control.get("control_text", "")
+                label = control.get("label", "")
+                datavalue = control.get("datavalue")
+
+                if datavalue and datavalue.strip():
+                    # Controls with values keep complete information
+                    dataitem_buffer.append({
+                        "control_text": control_text,
+                        "label": label,
+                        "datavalue": datavalue
+                    })
+                else:
+                    # Empty controls compressed as tuples
+                    dataitem_buffer.append((control_text, label))
+            else:
+                # When encountering non-DataItem controls, first output the accumulated DataItem group
+                if dataitem_buffer:
+                    compressed_info.append({
+                        "type": "DataItemGroup",
+                        "format": "Expressed info for DataItem controls. tuples are (control_text, label) for control with no value, dicts have datavalue",
+                        "items": dataitem_buffer
+                    })
+                    dataitem_buffer = []
+
+                # Add current non-DataItem control
+                compressed_info.append(control)
+
+        # Handle remaining DataItem at the end of file
+        if dataitem_buffer:
+            compressed_info.append({
+                "type": "DataItemGroup",
+                "format": "Expressed info for DataItem controls. tuples are (control_text, label) for control with no value, dicts have datavalue",
+                "items": dataitem_buffer
+            })
+
+        return compressed_info
+
+    @staticmethod
+    def get_control_value(control: UIAWrapper, max_length: int = 20) -> str:
+        """
+        Get the value of the control through ValuePattern
+        :param control: UIAWrapper control object
+        :param max_length: Maximum length of the return value
+        :return: The value of the control, returns None if obtaining fails
+        """
+        try:
+            element = control.element_info._element
+            UIA_dll = pywinauto.uia_defines.IUIA().UIA_dll
+
+            # Get ValuePattern interface
+            value_pattern = element.GetCurrentPattern(UIA_dll.UIA_ValuePatternId)
+            value_pattern_interface = value_pattern.QueryInterface(UAC.IUIAutomationValuePattern)
+
+            # Get value
+            value = value_pattern_interface.CurrentValue
+
+            if value and isinstance(value, str):
+                # Truncate to specified length
+                return value[:max_length] if len(value) > max_length else value
+            elif value is not None:
+                # Convert to string and truncate
+                str_value = str(value)
+                return str_value[:max_length] if len(str_value) > max_length else str_value
+            else:
+                return None
+
+        except Exception as e:
+            # Optional: print debug information
+            # print(f"Failed to get ValuePattern value: {e}")
+            return None
+
+    @staticmethod
+    def get_control_text(control: UIAWrapper, max_length: int = 20) -> str:
+        """
+        Get the text content of the control through TextPattern
+        :param control: UIAWrapper control object
+        :param max_length: Maximum length of the return value
+        :return: The text content of the control, returns None if obtaining fails
+        """
+        try:
+            element = control.element_info._element
+            UIA_dll = pywinauto.uia_defines.IUIA().UIA_dll
+
+            # Get TextPattern interface
+            text_pattern = element.GetCurrentPattern(UIA_dll.UIA_TextPatternId)
+            text_pattern_interface = text_pattern.QueryInterface(UAC.IUIAutomationTextPattern)
+
+            # Get the text range of the entire document
+            document_range = text_pattern_interface.DocumentRange
+
+            # Get text content
+            text_content = document_range.GetText(-1)  # -1 means get all text
+
+            if text_content and isinstance(text_content, str):
+                # Truncate to specified length
+                return text_content[:max_length] if len(text_content) > max_length else text_content
+            elif text_content is not None:
+                # Convert to string and truncate
+                str_content = str(text_content)
+                return str_content[:max_length] if len(str_content) > max_length else str_content
+            else:
+                return None
+
+        except Exception as e:
+            # Optional: print debug information
+            # print(f"Failed to get TextPattern text: {e}")
+            return None
+
+    @staticmethod
+    def get_texts(control: UIAWrapper, max_length: int = 10000) -> str:
+        """
+        Comprehensive function to get the text content of the control, trying different methods in priority order
+        1. First try to get through TextPattern
+        2. If failed, get through ValuePattern
+        3. If still failed, get through control.texts()
+        :param control: UIAWrapper control object
+        :param max_length: Maximum length of the return value
+        :return: The text content of the control, returns empty string if all methods fail
+        """
+        # Method 1: Try to get through TextPattern
+        try:
+            text_content = ControlInspectorFacade.get_control_text(control, max_length)
+            if text_content and text_content.strip():  # Ensure it's not a blank string
+                return text_content
+        except Exception:
+            pass
+
+        # Method 2: Try to get through ValuePattern
+        try:
+            value_content = ControlInspectorFacade.get_control_value(control, max_length)
+            if value_content and value_content.strip():  # Ensure it's not a blank string
+                return value_content
+        except Exception:
+            pass
+
+        # Method 3: Try to get through control.texts()
+        try:
+            texts_content = control.texts()
+            if texts_content:
+                # texts() usually returns a list, take the first non-empty element
+                if isinstance(texts_content, list):
+                    for text in texts_content:
+                        if text and str(text).strip():
+                            text_str = str(text)
+                            return text_str[:max_length] if len(text_str) > max_length else text_str
+                else:
+                    # If not a list, process directly
+                    text_str = str(texts_content)
+                    if text_str.strip():
+                        return text_str[:max_length] if len(text_str) > max_length else text_str
+        except Exception:
+            pass
+
+        # All methods failed, return empty string
+        return ""
+
+    @staticmethod
     def get_control_info(
         window: UIAWrapper, field_list: List[str] = []
     ) -> Dict[str, str]:
@@ -649,6 +901,10 @@ class ControlInspectorFacade:
             assign("control_id", lambda: window.element_info.control_id)
             assign("control_class", lambda: window.element_info.class_name)
             assign("control_name", lambda: window.element_info.name)
+             # Add new field support
+            assign("automation_id", lambda: window.element_info.automation_id)
+            assign("full_description", lambda: window.element_info.full_description)
+
             rectangle = window.element_info.rectangle
             assign(
                 "control_rect",
@@ -668,6 +924,15 @@ class ControlInspectorFacade:
                 assign("source", lambda: source)
             except:
                 assign("source", lambda: "")
+
+            # Added: Get datavalue for DataItem type controls
+            if window.element_info.control_type == "DataItem":
+                # print("!!!!!!!!!!DataItem found")
+                datavalue = ControlInspectorFacade.get_control_value(window)
+                if datavalue and datavalue.strip():  # Still can exclude cases that contain only whitespace
+                    # print(f"!!!!!!!!!!DataItem datavalue: {datavalue}")
+                    assign("datavalue", lambda val=datavalue: val)
+                    # assign("datavalue", lambda: datavalue)
 
             return control_info
         except:

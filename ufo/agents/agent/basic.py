@@ -292,7 +292,7 @@ class BasicAgent(ABC):
                     qa_pair = {"question": question, "answer": answer}
 
                     utils.append_string_to_file(
-                        configs["QA_PAIR_FILE"], json.dumps(qa_pair)
+                        configs["QA_PAIR_FILE"], json.dumps(qa_pair, ensure_ascii=False)
                     )
 
                 else:

@@ -1,90 +1,73 @@
-insert_table:
+visit:
   summary: |-
-    "insert_table" is to insert a table to a Word document.
+    
+    Note that the Office version is the latest Microsoft 365.
+    You will be given a Word control navigation tree (or forest). This tree shows the transition relationships among controls and has been processed into a tree format. Note that there may be a forest with multiple trees: one main tree whose root node is Root, plus other subtrees. The subtrees in the forest extract part of the common structure from the original graph to reduce the tree size. Each control in the tree is formatted as: name_numericid[children], where the numeric id is the unique identifier of the control. Controls with [children] are non-leaf nodes; those without are leaf nodes. If you want to use a control that appears in the navigation tree, you may directly use visit (with that control's ID), regardless of whether the control is currently visible on the screen.
+    Before using a control, be sure to think carefully about whether the effect of that control depends on other states. If visit cannot complete the task, please use another interface.
+    
+    The subtree information is as follows: {va_subtree_info}
+
+    The navigation tree/forest is as follows: {va_prompt}
+
+    When the user requests that a task be performed in Word, please follow these rules:
+    When using visit, the most critical thing is to output the target_funcs parameter in it (this is the only parameter; there are no others). Below is how to construct the target_funcs parameter.
+    0. Controls are divided into navigation controls (non-leaf nodes) and functional controls (leaf nodes).
+    Completing the task may first require selecting the object to be operated on, which can be done through functional controls or other methods. Identifying the object to be operated on may require combining actual image information.
+    The app's prior usage state may be random, and the initially selected object may not meet your requirements. Note that you will receive a screenshot: the left side is the original image, and the right side is the current screen with controls annotated with labels.
+    Please note that the annotated labels have nothing to do with the ids in the control navigation tree; the letter labels in the screenshot are only for helping you perceive what content is currently on the screen.
+    You will also receive a control_info for the current screen. The labels in it are the labels in the image and likewise have nothing to do with the ids in the control navigation tree.
+    
+    1. Identify the functional controls (leaf nodes) needed to accomplish the task. More than one functional control may be required. You can determine the function of these controls from the navigation path (ancestor) of the functional control and its own description (if any).
+    2. Output the ID of the final functional control(s) (leaf nodes) to be accessed. Note that if the target control is on a subtree, then outputting only the target control id itself cannot uniquely determine the path. When the target is on a subtree, you must provide the entry_ref_id together with it (which is also a leaf node). The entry_ref_id must be in entry_ref_whitelist. There may also be refs inside a subtree that point to another subtree. The order of items in entry_ref_id is, from left to right, the ref in the main tree, then the ref in the subtree, and so on;    
+    Here is an explanation of what access means. When you declare a control to be accessed, the solver will first intelligently navigate to the target control by combining the current interface and the control's path. It will use click_input rather than invoke, and you should note that the effects of these two actions may differ. Finally, it will operate on the target control, using click_input by default, and falling back to invoke when the control is available but not visible (for example, when there is a scrollbar in a dropdown menu).
+
+    3. For controls labeled as Edit (with an Edit field before the id), you must not only output the id, but also the text to be entered and overwritten. Write the object as `{"id": <number>, "text": "<text to input>"}`. The text field should contain the original text and does not require extra escaping. Assign it directly as the JSON parameter value.
+    4. You may use shortcut keys. Please be sure to note that shortcut keys have not been verified, so they are prone to errors. Use shortcut keys only when necessary. If the controls provided by the navigation tree can accomplish the task, do not use shortcut keys. Special keys are represented using their virtual key codes. For example, "{VK_CONTROL}c" represents the Ctrl+C shortcut.
+    Example 1 (correct) Copy the selected text
+    {"shortcut_key": "{VK_CONTROL}c"}
+    Example 2 (correct) Press the Tab key twice consecutively
+    {"shortcut_key": "{TAB 2}"}
+    Example 3 (correct) Press the =/+ key
+    {"shortcut_key": "="}
+    Example 3.5 (wrong) SHIFT + '=/+' key
+    {"shortcut_key": "{VK_SHIFT}+"}
+    Example 3.6 (correct) SHIFT + '=/+' key
+    {"shortcut_key": "{VK_SHIFT}="}
+    Example 4 (correct) Press the + key
+    {"shortcut_key": "+"}
+    Example 5 (correct) Press the - key
+    {"shortcut_key": "-"}
+    Example 6 (correct) Press the alt key
+    {"shortcut_key": "{VK_MENU}"}
+    Example 7 (wrong) Press the alt key 
+    {"shortcut_key": "%"} <- % will be transferred into {%}
+    Example 8 (correct) Press the alt key
+    {"shortcut_key": "{VK_MENU}"} 
+    Note that if you output multiple consecutive shortcut_key items instead of putting them into one, they will be treated as multiple independent shortcut-key operations rather than one key combination. Each independent shortcut key will have a 0.3s interval.
+    5. A modal dialog blocks access to elements outside the dialog. If a control is inside a dialog, you need to close or confirm the dialog through controls such as OK/Close before you can access controls outside the dialog.
+    6. The output format must be a single valid JSON document: the top level is an array, and the elements are arranged in execution order. Format: normal click: {"id": <number>}, Edit control: {"id": <number>, "text": "<text to input>"}, shortcut key: {"shortcut_key": "<key combination / key>"}
+    **Examples**
+    - Click: [{"id": 4}]
+    - Enter Hello in Edit 9, then click 12: [{"id": 9, "text": "Hello"}, {"id": 12}]
+    - Click only: [{"id": 20}]
+    - Click only: `[500]`, but 500 is on a subtree, the subtree root node is 450, and currently 97, 105, 109, and 206 are refs pointing to the root node of the tree where 500 is located. You currently need to start from ref 109 to access 500
+      [{"id": 500, "entry_ref_id": [109]}]
+    Output must be in JSON format; it is not allowed to output control ids in a non-JSON format.
+
+    7. Other than the JSON body, **do not output any explanatory text or comments**.
+    8. Do not act on your own initiative. If you are not instructed to save elsewhere, then save in place by default. If you need to choose a save type, prefer using a dropdown rather than a combobox. Save changes only when explicitly instructed.
+    9. If there are multiple solutions to a task, choose the one you believe is the most reliable and has the highest success rate.
+    10. Please note that the navigation tree/forest is incomplete. If you need to use a control in the topology, but you also need to use a control that appears only after accessing that control (but that latter control should have been in the graph but is not), then you need to be cautious: you may cautiously access the existing control in the graph first, and then decide the next step based on what appears after that access.
+
   class_name: |-
-    InsertTableCommand
+    VisitCommand
   usage: |-
-    [1] API call: insert_table(rows: int, columns: int) 
+    [1] visit API call: visit(target_funcs: List[Dict])
     [2] Args:
-      - rows: The number of rows in the table.
-      - columns: The number of columns in the table.
-    [3] Example: insert_table(rows=3, columns=3)
-    [4] Available control item: The Document control item in the Word app.
-    [5] Return: None
-
-
-select_text:
-  summary: |-
-    "select_text" is to select the text in a Word document for further operations, such as changing the font size or color.
-  class_name: |-
-    SelectTextCommand
-  usage: |-
-    [1] API call: select_text(text: str) 
-    [2] Args:
-      - text: The exact text to be selected.
-    [3] Example: select_text(text="Hello")
-    [4] Available control item: The Document control item in the Word app.
-    [5] Return: A string of the selected text if successful, otherwise a text not found message.
-
-
-select_table:
-  summary: |-
-    "select_table" is to select a table in a Word document for further operations, such as deleting the table or changing the border color.
-  class_name: |-
-    SelectTableCommand
-  usage: |-
-    [1] API call: select_table(number: int) 
-    [2] Args:
-      - number: The index number of the table to be selected.
-    [3] Example: select_table(number=1)
-    [4] Available control item: The Document control item in the Word app.
-    [5] Return: A string of the selected table if successful, otherwise an out of range message.
-
-
-select_paragraph:
-  summary: |-
-    "select_paragraph" is to select a paragraph in a Word document for further operations, such as changing the alignment or indentation.
-  class_name: |-
-    SelectParagraphCommand
-  usage: |-
-    [1] API call: select_paragraph(start_index: int, end_index: int, non_empty: bool = True) 
-    [2] Args:
-      - start_index: The start index of the paragraph to be selected.
-      - end_index: The end index of the paragraph, if ==-1, select to the end of the document.
-      - non_empty: If True, select the non-empty paragraphs only.
-    [3] Example: select_paragraph(start_index=1, end_index=3, non_empty=True)
-    [4] Available control item: The Document control item in the Word app.
-    [5] Return: None
-
-
-save_as:
-  summary: |-
-    "save_as" is the fastest way to save or export the Word document to a specified file format with one command. You should use this API to save your work since it is more efficient than manually saving the document.
-  class_name: |-
-    SaveAsCommand
-  usage: |-
-    [1] API call: save_as(file_dir: str = "", file_name: str = "", file_ext: str = "") 
-    [2] Args:
-      - file_dir: The directory to save the file. If not specified, the current directory will be used.
-      - file_name: The name of the file without extension. If not specified, the name of the current document will be used.
-      - file_ext: The extension of the file. If not specified, the default extension is ".pdf".
-    [3] Example: save_as(file_dir="", file_name="", file_ext=".pdf")
-    [4] Available control item: The Document control item in the Word app.
-    [5] Return: A message indicating the success or failure of saving the document.
-
-
-set_font:
-  summary: |-
-    "set_font" is to set the font of the selected text in a Word document. The text must be selected before calling this command.
-  class_name: |-
-    SetFontCommand
-  usage: |-
-    [1] API call: set_font(font_name: str = None, font_size: int = None) 
-    [2] Args:
-      - font_name: The name of the font (e.g., "Arial", "Times New Roman", "宋体"). If None, the font name will not be changed.
-      - font_size: The font size (e.g., 12). If None, the font size will not be changed.
-    [3] Example: set_font(font_name="Times New Roman")
-    [4] Available control item: The Document control item in the Word app.
-    [5] Return: A message indicating the font and font size changes if successful, otherwise a message indicating no text selected.
-
-
+      - The target_funcs operation sequence in JSON-array form. Each element can be:
+        * Normal click: {"id": <number>}
+        * Edit control input: {"id": <number>, "text": "<text content>"}
+        * Shortcut key: {"shortcut_key": "<key combination>"}
+    [3] Example: visit(target_funcs=[{"id": 123}, {"id": 456, "text": "Hello"}, {"shortcut_key": "{VK_CONTROL}s"}])
+    [4] Available control item: see navigation_tree
+    [5] Return: A string of the execution result and key execution logs.

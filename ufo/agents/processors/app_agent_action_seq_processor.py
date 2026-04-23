@@ -43,16 +43,23 @@ class AppAgentActionSequenceProcessor(AppAgentProcessor):
         """
 
         action_sequence_dicts = self._response_json.get("ActionList", [])
-        action_list = [
-            OneStepAction(
+
+
+        action_list = []
+        for action_dict in action_sequence_dicts:
+            args = action_dict.get("Args", {}).copy()
+            # add application_window
+            args["application_window"] = self.application_window
+
+            action_list.append(OneStepAction(
                 function=action_dict.get("Function", ""),
-                args=action_dict.get("Args", {}),
+                # args=args,  # include application_window
+                args = action_dict.get("Args", {}),
                 control_label=action_dict.get("ControlLabel", ""),
                 control_text=action_dict.get("ControlText", ""),
                 after_status=action_dict.get("Status", "CONTINUE"),
-            )
-            for action_dict in action_sequence_dicts
-        ]
+            ))
+
         self.actions = ActionSequence(action_list)
         self.function_calls = self.actions.get_function_calls()
 
@@ -76,14 +83,14 @@ class AppAgentActionSequenceProcessor(AppAgentProcessor):
             self.status = "FINISH"
 
     def capture_control_screenshot_from_adjusted_coords(
-        self, control_adjusted_coords: List[Dict[str, Any]]
+            self, control_adjusted_coords: List[Dict[str, Any]]
     ) -> None:
         """
         Capture the screenshot of the selected control.
         :param control_selected: The selected control item or a list of selected control items.
         """
         control_screenshot_save_path = (
-            self.log_path + f"action_step{self.session_step}_selected_controls.png"
+                self.log_path + f"action_step{self.session_step}_selected_controls.png"
         )
 
         self._memory_data.add_values_from_dict(

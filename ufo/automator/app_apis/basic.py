@@ -4,7 +4,8 @@
 
 from abc import abstractmethod
 from typing import Dict, List, Type
-
+from typing import Optional
+from pywinauto.controls.uiawrapper import UIAWrapper
 import win32com.client
 
 from ufo.automator.basic import CommandBasic, ReceiverBasic
@@ -32,6 +33,16 @@ class WinCOMReceiverBasic(ReceiverBasic):
 
         self.client = win32com.client.Dispatch(self.clsid)
         self.com_object = self.get_object_from_process_name()
+
+        self.application_window = None  # Add this attribute
+
+    def set_application_window(self, window: UIAWrapper) -> None:
+        """Set the application window reference."""
+        self.application_window = window
+
+    def get_application_window(self) -> UIAWrapper:
+        """Get the application window."""
+        return self.application_window
 
     @abstractmethod
     def get_object_from_process_name(self) -> win32com.client.CDispatch:
@@ -164,6 +175,54 @@ class WinCOMCommand(CommandBasic):
         """
         self.receiver = receiver
         self.params = params if params is not None else {}
+
+    def get_ui_navigation_files(self, graph_file_key: str, id_map_file_key: str) -> tuple:
+        import os
+        from ufo.config.config import Config
+
+        configs = Config.get_instance().config_data
+        ui_navigation_config = configs.get("UI_NAVIGATION", {})
+
+        # Flatten search: expand all leaf key-value pairs from nested dicts;
+        # keys are globally unique, so there are no conflicts
+        def flatten(d: dict) -> dict:
+            result = {}
+            for k, v in d.items():
+                if isinstance(v, dict):
+                    result.update(flatten(v))  # 递归展开子 dict
+                else:
+                    result[k] = v
+            return result
+
+        flat_config = flatten(ui_navigation_config)
+
+        ui_graph_file = flat_config.get(graph_file_key, "")
+        ui_graph_id_map_file = flat_config.get(id_map_file_key, "")
+
+        if not ui_graph_file or not ui_graph_id_map_file:
+            raise ValueError(
+                f"UI navigation configuration not found. "
+                f"Please configure {graph_file_key} and {id_map_file_key} in config file."
+            )
+
+        # Convert relative paths to absolute paths
+        if not os.path.isabs(ui_graph_file):
+            # Locate the project root via the ufo package path
+            import ufo
+            ufo_package_path = os.path.dirname(ufo.__file__)  # .../UFO/ufo
+            project_root = os.path.dirname(ufo_package_path)  # .../UFO
+
+            ui_graph_file = os.path.join(project_root, ui_graph_file.replace('/', os.sep))
+            ui_graph_id_map_file = os.path.join(project_root, ui_graph_id_map_file.replace('/', os.sep))
+
+        # Check if the files exist
+        if not os.path.exists(ui_graph_file):
+            raise FileNotFoundError(f"UI navigation graph file not found: {ui_graph_file}")
+
+        if not os.path.exists(ui_graph_id_map_file):
+            raise FileNotFoundError(f"UI navigation ID map file not found: {ui_graph_id_map_file}")
+
+        return ui_graph_file, ui_graph_id_map_file
 
     @abstractmethod
     def execute(self):

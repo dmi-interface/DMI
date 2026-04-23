@@ -267,9 +267,10 @@ class OneStepAction:
             return self.results
 
         # Create the control receiver.
-        puppeteer.receiver_manager.create_ui_control_receiver(
+        receiver = puppeteer.receiver_manager.create_ui_control_receiver(
             control_selected, application_window
         )
+        receiver.set_annotation_dict(control_dict)  # 设置annotation_dict
 
         if self.function:
 

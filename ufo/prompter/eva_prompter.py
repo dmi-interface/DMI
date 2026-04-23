@@ -216,6 +216,13 @@ class EvaluationAgentPrompter(BasicPrompter):
             }
         )
 
+        user_content.append(
+            {
+                "type": "text",
+                "text": "<Your response:> Return a valid json object only.",  # add json keyword
+            }
+        )
+
         return user_content
 
     def get_step_trajectory(self, log: Dict[str, str]) -> Dict[str, str]:

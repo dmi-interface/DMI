@@ -23,6 +23,7 @@ if configs is not None:
 else:
     DEFAULT_PNG_COMPRESS_LEVEL = 6
 
+print("configs DEFAULT_PNG_COMPRESS_LEVEL is {}".format(DEFAULT_PNG_COMPRESS_LEVEL))
 
 class Photographer(ABC):
     """
@@ -44,12 +45,14 @@ class Photographer(ABC):
 
         raw_width, raw_height = image.size
         scale_ratio = min(scaler[0] / raw_width, scaler[1] / raw_height)
+        # scale_ratio = 0.5
         new_width = int(raw_width * scale_ratio)
         new_height = int(raw_height * scale_ratio)
 
         resized_image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
 
         new_image = Image.new("RGB", scaler, (0, 0, 0))
+        # new_image = Image.new("RGB", (new_width, new_height), (0, 0, 0))
         new_image.paste(
             resized_image,
             (0, 0),
@@ -77,6 +80,8 @@ class ControlPhotographer(Photographer):
         :return: The screenshot."""
         # Capture single window screenshot
         screenshot = self.control.capture_as_image()
+        # scale
+        # scalar = [1,1]
         if scalar is not None:
             screenshot = self.rescale_image(screenshot, scalar)
 
@@ -90,7 +95,7 @@ class DesktopPhotographer(Photographer):
     Class to capture the desktop screenshot.
     """
 
-    def __init__(self, all_screens=True) -> None:
+    def __init__(self, all_screens=False) -> None:
         """
         Initialize the DesktopPhotographer.
         :param all_screens: Whether to capture all screens.
@@ -104,6 +109,7 @@ class DesktopPhotographer(Photographer):
         :return: The screenshot.
         """
         screenshot = ImageGrab.grab(all_screens=self.all_screens)
+        # scalar = [1,1]
         if scalar is not None:
             screenshot = self.rescale_image(screenshot, scalar)
         if save_path is not None and screenshot is not None:
@@ -527,7 +533,7 @@ class PhotographerFacade:
         screenshot = self.screenshot_factory.create_screenshot("app_window", control)
         return screenshot.capture(save_path, scalar)
 
-    def capture_desktop_screen_screenshot(self, all_screens=True, save_path=None):
+    def capture_desktop_screen_screenshot(self, all_screens=False, save_path=None):
         """
         Capture the desktop screenshot.
         :param all_screens: Whether to capture all screens.

@@ -286,6 +286,20 @@ class HostAgent(BasicAgent):
                 application_root_name, application_window_name
             )
 
+            # get COM receiver
+            com_api_receiver = app_agent.Puppeteer.receiver_manager.com_receiver
+            # print("!!!!!debug: set application window for com api receiver")
+
+            print(com_api_receiver,hasattr(com_api_receiver, 'set_application_window'), self.processor, hasattr(self.processor, 'application_window'))
+            if (com_api_receiver and
+                    hasattr(com_api_receiver, 'set_application_window') and
+                    self.processor and
+                    hasattr(self.processor, 'application_window')):
+
+                application_window = self.processor.application_window
+                if application_window:
+                    com_api_receiver.set_application_window(application_window)
+                print("application_window: ", application_window)
         # Provision the context for the app agent, including the all retrievers.
         app_agent.context_provision(request)
 

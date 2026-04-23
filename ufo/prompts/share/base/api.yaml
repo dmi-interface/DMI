@@ -8,7 +8,7 @@ click_input:
     [2] Args:
       - button: The mouse button to click. One of ''left'', ''right'', ''middle'' or ''x'' (Default: ''left'')
       - double: Whether to perform a double click or not (Default: False)'
-      - pressed: The keybord key to press while clicking. For example, ''CONTROL'' for the Control key (Default: None)
+      - pressed: The keyboard key to press while clicking. For example, ''CONTROL'' for the Control key (Default: None)
     [3] Example: click_input(button="left", double=False), click_input(button="right", double=True, pressed="CONTROL")
     [4] Available control item: All control items.
     [5] Return: None
@@ -45,7 +45,7 @@ drag_on_coordinates:
       - end_y: The relative fractional y-coordinate of the ending point to drag to, ranging from 0.0 to 1.0. The origin is the top-left corner of the application window.
       - button: The mouse button to drag. One of 'left', 'right'. (Default: 'left')
       - duration: The duration of the drag action in seconds. (Default: 1.0)
-      - key_hold: The keybord key to hold while dragging. For example, 'shift' for the shift key (Default: None)
+      - key_hold: The keyboard key to hold while dragging. For example, 'shift' for the shift key (Default: None)
     [3] Example: drag_on_coordinates(start_x=0.1, start_y=0.1, end_x=0.9, end_y=0.9, button="left", duration=1.0, key_hold="shift")
     [4] Available control item: Control item is not required for this API.
     [5] Return: None
@@ -92,18 +92,6 @@ summary:
     [4] Available control item: All control items.
     [5] Return: the summary of the image.
 
-texts:
-  summary: |-
-    "texts" is to get the text of the control item. It typical apply to Edit and Document control item when user request is to get the text of the control item. This only works for Edit and Document control items. If you want to get the text of other control items, you can use the "summary" API to describe the required information based on the screenshot by yourself.
-  class_name: |-
-    GetTextsCommand
-  usage: |-
-    [1] API call: texts()
-    [2] Args: None
-    [3] Example: texts()
-    [4] Available control item: Edit and Document control items.
-    [5] Return: the text content of the control item.
-
 wheel_mouse_input:
   summary: |-
     "wheel_mouse_input" is to scroll the control item. It typical apply to a ScrollBar type of control item when user request is to scroll the control item, or the targeted control item is not visible nor available in the control item list, but you know the control item is in the application window and you need to scroll to find it.
@@ -128,10 +116,103 @@ keyboard_input:
       - keys: The key to input. It can be any key on the keyboard, with special keys represented by their virtual key codes. For example, "{VK_CONTROL}c" represents the Ctrl+C shortcut key.
       - control_focus: Whether to focus on your selected control item before typing the keys. If False, the hotkeys will operate on the application window. (Default: True)
       - keyboard_input(keys="{VK_CONTROL}c") --> Copy the selected text.
+      - keyboard_input(keys="{VK_CONTROL}c", control_focus=False) --> Copy the selected text. Sent within the application window and does not depend on any specific control.
       - keyboard_input(keys="{TAB 2}") --> Press the Tab key twice.
+      - keyboard_input(keys="{VK_MENU}") --> Press the Alt key.
+      - keyboard_input(keys="%") --> Type the '%' character rather than pressing the Alt key.
       - keyboard_input(keys="Hello World", control_focus=False) --> Type "Hello World" without focusing on any control item.
     [4] Available control item: All control items.
     [5] Return: None
 
+scroll_to_percent:
+  summary: |-
+    "scroll_to_percent" is to scroll a scrollable container or scrollbar to a specific percentage position.
+  class_name: |-
+    ScrollToPercentCommand
+  usage: |-
+    [1] API call: scroll_to_percent(horiz_percent: float, vert_percent: float)
+    [2] Args:
+      - horiz_percent: Horizontal scroll percentage (0-100), -1 means no change
+      - vert_percent: Vertical scroll percentage (0-100), -1 means no change  
+    [3] Example: scroll_to_percent(horiz_percent=-1, vert_percent=50)
+    [4] Available control item: Any control item that supports scrolling or is within a scrollable container. For example, a scrollbar control.
+    [5] Return: Success message or error information about the scroll operation.
 
-  
+select_line:
+  summary: |-
+    "select_line" is to precisely select a specified line or range of lines in text using
+    the UIA TextPattern. This API can be used with any control that supports the UIA
+    TextPattern (e.g., a Word Document, or a text box in PowerPoint represented as an
+    Image control type).
+    Important note: start_line / end_line refer to "lines" as defined by the TextPattern,
+    which may not align with visually soft-wrapped lines or the logical lines described in
+    the task. Usage should be adjusted according to the actual task and data.
+    Note: You do not need to click the control first when selecting lines — this function
+    automatically performs the selection based on the specified control. It operates using
+    the ControlLabel and ControlText specified in your Action.
+  class_name: |-
+    SelectLineCommand
+  usage: |-
+    [1] API call: select_line(start_line: int, end_line: int, non_empty: bool = True)
+    [2] Args:
+      - start_line: The starting line number (1-based index, index starts from 1).
+      - end_line: Ending line number (optional, if not provided, only select single line)
+      - non_empty: If True, select the non-empty paragraphs only.
+    [3] Example:
+        Select lines 5 through 8 (inclusive): select_line(start_line=5, end_line=8)
+        Select line 5 only: select_line(start_line=5)
+    [4] Available control item: Any control item that supports the UIA TextPattern (e.g., text editors, documents, text boxes).
+    [5] Return: Success message with selected text preview or error information.
+
+select_paragraph:
+  summary: |-
+    "select_paragraph" precisely selects a specified paragraph or range of paragraphs in text using the UIA TextPattern. Any control that supports UIA TextPattern can use this API for paragraph selection (for example, a Word Document or a text box in PowerPoint).
+    Important note: start_paragraph / end_paragraph refer to the “paragraph” as defined by TextPattern, which may not match the paragraph concept in the task’s semantics (such as paragraphs separated by blank lines, Markdown semantic paragraphs, or code blocks).
+    It should be used based on the actual task and data. Note that when you need to select a paragraph, you do not need to click the control first. This function can automatically complete the selection on the specified control. It will operate on the control specified by your Action’s ControlLabel and ControlText.
+  class_name: |-
+    SelectParagraphCommand
+  usage: |-
+    [1] API call: select_paragraph(start_paragraph: int, end_paragraph: int, non_empty: bool = True)
+    [2] Args:
+      - start_paragraph: Starting paragraph number (1-based; indexing starts at 1)
+      - end_paragraph: Ending paragraph number (optional; if not provided, only a single paragraph will be selected)
+      - non_empty: If True, only non-empty paragraphs will be selected.
+    [3] Example: Select paragraphs 2 through 4 (including paragraph 4): select_paragraph(start_paragraph=2, end_paragraph=4) Select paragraph 2: select_paragraph(start_paragraph=2)
+    [4] Available control item: Any control item that supports UIA TextPattern (such as text editors, documents, or text boxes).
+    [5] Return: Success message with a preview of the selected text, or error information.
+
+select_controls:
+  summary: |-
+    "select_controls" is to select multiple control items at once. This API is useful when you need to select multiple items for batch operations like copying, deleting, or formatting multiple items together.  Note that after selection, focus
+    is typically placed on the selected control(s).
+    Note: This method is more reliable than using keyboard shortcuts for multi-selection.
+    Prefer this approach over keyboard shortcuts when multiple selection is needed.
+    This method supports both single and multi-selection.
+  class_name: |-
+    SelectControlsCommand
+  usage: |-
+    [1] API call: select_controls(control_label_list: List[str])
+    [2] Args:
+      - control_label_list: A list of control labels to select. Each label should correspond to an available control item from the control info.
+    [3] Example:
+        Multi-select: select_controls(control_label_list=["A", "C", "E"])
+        Single select: select_controls(control_label_list=["G"])
+    [4] Available control item: All control items that support selection pattern. (typically ListItem, DataItem, etc).
+    [5] Return: Success message with selection count or error information about the selection operation.
+    [6] Note: When using this API, set both ControlLabel to "" and ControlText to "" since the actual controls are specified via control_label_list parameter.
+texts:
+  summary: |-
+    "texts" is to retrieve the text content of a control item. It is typically applied to
+    Edit and Document control items when the user needs to read the text content, and also
+    works with Image-type controls in PowerPoint (text boxes). You can use this to obtain
+    the actual text including newline characters. If you need to get text from other control
+    types, use the "summary" API to describe the required information from the screenshot
+    manually.
+  class_name: |-
+    GetTextsCommand
+  usage: |-
+    [1] API call: texts()
+    [2] Args: None
+    [3] Example: texts()
+    [4] Available control item: Edit and Document control items.
+    [5] Return: The text content of the control item.

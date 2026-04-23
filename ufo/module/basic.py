@@ -300,7 +300,7 @@ class BaseRound(ABC):
 
                 # Capture the desktop screenshot for all screens.
                 PhotographerFacade().capture_desktop_screen_screenshot(
-                    all_screens=True, save_path=desktop_save_path
+                    all_screens=False, save_path=desktop_save_path
                 )
 
             # Save the final XML file
@@ -693,7 +693,7 @@ class BaseSession(ABC):
 
         evaluator.print_response(result)
 
-        self.evaluation_logger.info(json.dumps(result))
+        self.evaluation_logger.info(json.dumps(result, ensure_ascii=False))
 
     @property
     def session_type(self) -> str:
@@ -744,7 +744,7 @@ class BaseSession(ABC):
 
                 # Capture the desktop screenshot for all screens.
                 PhotographerFacade().capture_desktop_screen_screenshot(
-                    all_screens=True, save_path=desktop_save_path
+                    all_screens=False, save_path=desktop_save_path
                 )
 
             # Save the final XML file

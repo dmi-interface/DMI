@@ -148,7 +148,7 @@ class PrefillFlow(AppAgentProcessor):
 
         # Capture UI control annotations
         self._annotation_dict = self._photographer.get_annotation_dict(
-            self._app_env.app_window, control_list, annotation_type="number"
+            self._app_env.app_window, control_list, annotation_type="letter"#annotation_type="number"
         )
 
         # Filter out irrelevant control elements

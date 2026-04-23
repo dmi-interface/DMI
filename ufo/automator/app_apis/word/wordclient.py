@@ -6,7 +6,8 @@ from typing import Dict, Type
 
 from ufo.automator.app_apis.basic import WinCOMCommand, WinCOMReceiverBasic
 from ufo.automator.basic import CommandBasic
-
+import ufo.automator.ui_control.dmi as ui_nav
+from ufo.config.config import Config
 
 class WordWinCOMReceiver(WinCOMReceiverBasic):
     """
@@ -175,6 +176,25 @@ class WordWinCOMReceiver(WinCOMReceiverBasic):
         except Exception as e:
             return f"Failed to save the document to {file_path}. Error: {e}"
 
+    def visit(self, target_funcs, application_window, ui_graph_file, ui_graph_id_map_file):
+        """
+        Visit method implementation
+        :param params: The parameters for visit
+        :return: The result of visit operation
+        """
+        # get application_window from receiver
+        # application_window = self.application_window
+
+        results = f"Visit executed with {len(target_funcs)} target functions"
+        ui_nav.GLOBAL_TAB_CONTAINER = None
+        # llm_output = json_input
+        llm_output = target_funcs
+        results = ui_nav.execute_llm_instructions(
+            llm_output, application_window, application_window,
+            ui_graph_file, ui_graph_id_map_file, filter_leaf_only=True
+        )
+        return results
+
     @property
     def type_name(self):
         return "COM/WORD"
@@ -320,3 +340,43 @@ class SetFontCommand(WinCOMCommand):
         The name of the command.
         """
         return "set_font"
+
+
+@WordWinCOMReceiver.register
+class VisitCommand(WinCOMCommand):
+    """
+    The command to execute visit operation.
+    """
+
+    def execute(self):
+        """
+        Execute the visit command.
+        :return: The result of visit operation.
+        """
+        application_window = None
+        # get application_window from parameter
+        # application_window = self.params.get("application_window")
+
+        # get application_window from receiver
+        application_window = self.receiver.application_window
+
+        ui_graph_file, ui_graph_id_map_file = self.get_ui_navigation_files(
+            "WORD_GRAPH_FILE",
+            "WORD_ID_MAP_FILE"
+        )
+
+        print(f".........debug: Using UI graph file: {ui_graph_file}")
+        print(f".........debug: Using ID map file: {ui_graph_id_map_file}")
+
+        # Get the parameters (JSON) of the visit call from LLM output
+        print(".........debug in visitcommand: application_window:", application_window)
+        target_funcs = self.params.get("target_funcs", [])
+        print(".........debug in visitcommand: target_funcs:", target_funcs)
+        return self.receiver.visit(target_funcs, application_window, ui_graph_file, ui_graph_id_map_file)
+
+    @classmethod
+    def name(cls) -> str:
+        """
+        The name of the command.
+        """
+        return "visit"

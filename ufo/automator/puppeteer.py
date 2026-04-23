@@ -205,23 +205,30 @@ class ReceiverManager:
 
         return self.ui_control_receiver
 
-    def create_api_receiver(self, app_root_name: str, process_name: str) -> None:
+    def create_api_receiver(self, app_root_name: str, process_name: str)-> None:
         """
         Get the API receiver.
         :param app_root_name: The app root name.
         :param process_name: The process name.
         """
+        # receiver = None
+        print("!!!!!!!!!!!!Debug: Registered receiver factories:")
         for receiver_factory_dict in self.receiver_factory_registry.values():
 
             # Check if the receiver is API
             if receiver_factory_dict.get("is_api"):
+                print(
+                    f"Receiver api factory: {receiver_factory_dict.get('factory').name()}"
+                )
                 receiver = receiver_factory_dict.get("factory").create_receiver(
                     app_root_name, process_name
                 )
+
                 if receiver is not None:
                     self.receiver_list.append(receiver)
 
         self._update_receiver_registry()
+        # return receiver
 
     def _update_receiver_registry(self) -> None:
         """

@@ -114,7 +114,7 @@ class HostAgentProcessor(BaseProcessor):
 
         # Capture the desktop screenshot for all screens.
         self.photographer.capture_desktop_screen_screenshot(
-            all_screens=True, save_path=desktop_save_path
+            all_screens=False, save_path=desktop_save_path
         )
 
         # Encode the desktop screenshot into base64 format as required by the LLM.

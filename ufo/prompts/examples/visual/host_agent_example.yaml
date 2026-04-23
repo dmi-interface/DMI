@@ -53,33 +53,6 @@ example2:
 
 
 
-example3:
-  Request: |-
-    Quickly remove all notes in the presentation.pptx, without looping through each slide.
-  Response: 
-    Observation: |-
-      I observe that the powerpoint application is visible in the screenshot, and the presentation.pptx is opened.
-    Thought: |-
-      The user request can be solely complete on the powerpoint application. I need to open the powerpoint application to complete the user request.
-    CurrentSubtask: |-
-      Remove all notes in the presentation.pptx file quickly without looping through each slide.
-    Message:
-      - (1) You need to use shortcut functions to remove all notes in the presentation.pptx file.
-      - (2) You must not loop through each slide to remove the notes, since it is time-consuming.
-    ControlLabel: |-
-      21
-    ControlText: |-
-      presentation - PowerPoint
-    Status: |-
-      ASSIGN
-    Plan: []
-    Comment: |-
-      I plan to use the 'Remove All Presentation Notes' function. This is the fastest way to remove all notes in the presentation.pptx file.
-    Questions: []
-    Bash: None
- 
-
-
 example4:
   Request: |-
     How many stars does the Imdiffusion repo have?
@@ -111,7 +84,7 @@ example5:
       Please remind me to get party dinner (5 people) preparation done before 5PM today with steps and notes.
   Response: 
     Observation: |-
-      The current screenshot does not show any reminder application or calendar application.
+      The current screenshot does not show any reminder application or calendar application opened.
     Thought: |-
       The user request can be solely complete on the Microsoft To Do application. I need to open the Microsoft To Do application to set a reminder for the user.
     CurrentSubtask: |-
@@ -131,27 +104,29 @@ example5:
     Questions: []
     Bash: None
 
-example6: 
+example6:
   Request: |- 
       Please create a slide from the meeting_notes.docx in the presentation1.pptx.
-  Response: 
+  Response:
     Observation: |-
-      The current screenshot does not show any the powerpoint application or the word application.
+      The current screenshot does not show any the powerpoint application or the word application opened. Although the bottom taskbar in the screenshot shows that a PowerPoint window is open, I cannot observe its specific content. Therefore, I should not make any detailed subtask planning.
+      My main task is to break down the user's request by app, ensuring that each subtask can be completed within a single app. This task is relatively simple, so I should directly use the user's request as the message. The user's intent can be fulfilled within one app, so no decomposition is needed. I should not restate my own understanding in CurrentSubtask, Message, or Plan; I can either leave them empty or directly repeat the user's request.
     Thought: |-
       The user request can be solely complete on the powerpoint application. I need to open the powerpoint application and use the Copilot Add-in to create a slide from the meeting_notes.docx.
     CurrentSubtask: |-
-      Create a slide from the meeting_notes.docx in the presentation1.pptx file using the Copilot Add-in in the Microsoft PowerPoint application.
+      Complete the user's task: "Please create a slide from the meeting_notes.docx in the presentation1.pptx."
     Message:
-      - (1) You need to use the Copilot Add-in to create a slide from the meeting_notes.docx in the presentation1.pptx, since this is the fastest way to complete the task.
+      - The user's task is: you should create a slide from the meeting_notes.docx in the presentation1.pptx.
     ControlLabel: |-
       4
     ControlText: |-
       presentation1 - PowerPoint
     Status: |-
       ASSIGN
-    Plan: []
+    Plan: |-
+      - Based on the specific situation within the app, complete the user's task: "Please create a slide from the meeting_notes.docx in the presentation1.pptx."
     Comment: |-
-      I plan to open the powerpoint application and use the Copilot Add-in to create a slide from the meeting_notes.docx.
+      I plan to open the PowerPoint application. Because I do not know the current state of the app, such as whether Copilot can be used, I will leave this judgment and the detailed task planning to the app agent.
     Questions: []
     Bash: None
 
@@ -164,6 +139,7 @@ example7:
       The current screenshot does not show any Teams application.
     Thought: |-
       I need to open the Teams application to send the alias and address to Tom. Before executing the action, I need to get the alias and address from the user by asking the user two questions to input the alias and address in the chat window.
+      Since I currently cannot obtain the specific state of the application, I should not output detailed subtasks.
     CurrentSubtask: |-
       Send the alias and address to Tom on Teams.
     Message:
@@ -174,7 +150,8 @@ example7:
       Tom Jim | Microsoft Teams
     Status: |-
       PENDING
-    Plan: []
+    Plan: |-
+      - complete the user task:"Send my alias and address to Tom on Teams."
     Comment: |-
       I plan to use the Teams application to send the alias and address to Tom.
     Questions:
@@ -204,12 +181,14 @@ example8:
     Status: |-
       ASSIGN
     Plan:
-      - Add all to do items previously summarized from the meeting notes email to one-by-one Microsoft To Do.
+      - Add all to do items (as user precisely required) previously summarized from the meeting notes email to one-by-one Microsoft To Do.
       - Write a summary about the meeting notes email on the meeting_notes.docx.
     Comment: |-
       I plan to first summarize all to do items from the meeting notes email in Outlook.
     Questions: []
     Bash: None
+    Tips: |-
+      Please be rigorous. Unless the user explicitly asks you to summarize rather than output directly, you must not produce any summary. Only when the user explicitly requests a summary may you ask for appagentsummary. Do not add any extra information. Be rigorous.
 
 example9:
   Request: 
@@ -257,3 +236,33 @@ example10:
       Since the file explorer application is not visible in the screenshot, I will use the bash command to open the file explorer application directly. Then find the label.txt file in the file explorer.
     Questions: []
     Bash: start explorer
+
+example11:
+  Request: |- 
+      I am using Word. Please help me complete a writing task. I want to write a history of the evolution of operating systems in accordance with academic paper writing requirements.
+  Response:
+    Observation: |-
+      The current screenshot does not show the Word application or an open Word window. Although the bottom taskbar in the screenshot indicates that Word is open, I cannot observe its specific content.
+    Thought: |-
+      The user's task can be completed entirely within a single app, Word, so there is no need to split it into subtasks by app.
+      The user's task involves handling highly subjective and uncertain data. Since the current data is not visible and the user's intent may be ambiguous, a plan can only be made based on the specific content.
+      For example, if the user wants me not to rewrite or add new content, but instead to revise the existing content, then I would need to inspect what is currently in the document.
+      The user's intent is too subjective to justify making assumptions. I should therefore be conservative and leave CurrentSubtask, Message, and Plan empty, or simply restate the user's request verbatim.
+      The user's task is to complete a writing assignment, which is highly subjective and likely ambiguous. For instance, it is unclear whether the user wants me to revise the existing content or overwrite it directly. Without seeing the text in the app, I should not make any assumptions. Otherwise, I may mislead the app agent.
+      Therefore, I should not make any detailed subtask plans. I should only handle the most basic and necessary action, which is to open Word, and conservatively treat the user's request as the message. In addition, I should not set a plan and should leave it empty.
+    CurrentSubtask: |-
+      The user's task is: “I am using Word. Please help me complete a writing task. I want to write a history of the evolution of operating systems in accordance with academic paper writing requirements.” Please first inspect the specific content, then complete the task based on the user's intent.
+    Message:
+      - The user's task is: “I am using Word. Please help me complete a writing task. I want to write a history of the evolution of operating systems in accordance with academic paper writing requirements.”
+    ControlLabel: |-
+      20
+    ControlText: |-
+      demo - Word
+    Status: |-
+      ASSIGN
+    Plan: |-
+      - Based on the specific situation within the app, complete the user's task: “I am using Word. Please help me complete a writing task. I want to write a history of the evolution of operating systems in accordance with academic paper writing requirements.”
+    Comment: |-
+      I plan to open the Word application. Because the user's task involves handling highly subjective and uncertain data, and I do not know the current state of the app, I will leave this judgment and the detailed task planning to the app agent.
+    Questions: []
+    Bash: None

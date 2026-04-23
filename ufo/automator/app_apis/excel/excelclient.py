@@ -8,7 +8,8 @@ import pandas as pd
 
 from ufo.automator.app_apis.basic import WinCOMCommand, WinCOMReceiverBasic
 from ufo.automator.basic import CommandBasic
-
+import ufo.automator.ui_control.dmi as ui_nav
+from ufo.config.config import Config
 
 class ExcelWinCOMReceiver(WinCOMReceiverBasic):
     """
@@ -37,6 +38,8 @@ class ExcelWinCOMReceiver(WinCOMReceiverBasic):
         :param sheet_name: The sheet name (str), or the sheet index (int), starting from 1.
         :return: The markdown table string.
         """
+        # get application_window from parameter
+        # application_window = self.params.get("application_window")
 
         sheet = self.com_object.Sheets(sheet_name)
 
@@ -55,7 +58,7 @@ class ExcelWinCOMReceiver(WinCOMReceiverBasic):
         return df.to_markdown(index=False)
 
     def insert_excel_table(
-        self, sheet_name: str, table: List[List[Any]], start_row: int, start_col: int
+            self, sheet_name: str, table: List[List[Any]], start_row: int, start_col: int
     ):
         """
         Insert a table into the sheet.
@@ -76,12 +79,12 @@ class ExcelWinCOMReceiver(WinCOMReceiverBasic):
         return table
 
     def select_table_range(
-        self,
-        sheet_name: str,
-        start_row: int,
-        start_col: int,
-        end_row: int,
-        end_col: int,
+            self,
+            sheet_name: str,
+            start_row: int,
+            start_col: int,
+            end_row: int,
+            end_col: int,
     ):
         """
         Select a range of cells in the sheet.
@@ -184,12 +187,12 @@ class ExcelWinCOMReceiver(WinCOMReceiverBasic):
             return f"Failed to reorder columns. Error: {e}"
 
     def get_range_values(
-        self,
-        sheet_name: str,
-        start_row: int,
-        start_col: int,
-        end_row: int = -1,
-        end_col: int = -1,
+            self,
+            sheet_name: str,
+            start_row: int,
+            start_col: int,
+            end_row: int = -1,
+            end_col: int = -1,
     ):
         """
         Get values from Excel sheet starting at (start_row, start_col) to (end_row, end_col).
@@ -242,7 +245,7 @@ class ExcelWinCOMReceiver(WinCOMReceiverBasic):
         return [list(row) for row in values]
 
     def save_as(
-        self, file_dir: str = "", file_name: str = "", file_ext: str = ""
+            self, file_dir: str = "", file_name: str = "", file_ext: str = ""
     ) -> None:
         """
         Save the document to PDF.
@@ -285,6 +288,23 @@ class ExcelWinCOMReceiver(WinCOMReceiverBasic):
         except Exception as e:
             return f"Failed to save the document to {file_path}. Error: {e}"
 
+    def visit(self, target_funcs, application_window, ui_graph_file, ui_graph_id_map_file):
+        """
+        Visit method implementation
+        :param params: The parameters for visit
+        :return: The result of visit operation
+        """
+
+        results = f"Visit executed with {len(target_funcs)} target functions"
+        ui_nav.GLOBAL_TAB_CONTAINER = None
+        # llm_output = json_input
+        llm_output = target_funcs
+        results = ui_nav.execute_llm_instructions(
+            llm_output, application_window, application_window,
+            ui_graph_file, ui_graph_id_map_file, filter_leaf_only=True
+        )
+        return results
+
     @staticmethod
     def letters_to_number(letters: str) -> int:
         """
@@ -294,7 +314,7 @@ class ExcelWinCOMReceiver(WinCOMReceiverBasic):
         """
         number = 0
         for i, letter in enumerate(letters[::-1]):
-            number += (ord(letter.upper()) - ord("A") + 1) * (26**i)
+            number += (ord(letter.upper()) - ord("A") + 1) * (26 ** i)
         return number
 
     @staticmethod
@@ -482,3 +502,43 @@ class SaveAsCommand(WinCOMCommand):
         The name of the command.
         """
         return "save_as"
+
+
+@ExcelWinCOMReceiver.register
+class VisitCommand(WinCOMCommand):
+    """
+    The command to execute visit operation.
+    """
+
+    def execute(self):
+        """
+        Execute the visit command.
+        :return: The result of visit operation.
+        """
+        application_window = None
+        # get application_window from parameter
+        # application_window = self.params.get("application_window")
+
+        # get application_window from receiver
+        application_window = self.receiver.application_window
+
+        ui_graph_file, ui_graph_id_map_file = self.get_ui_navigation_files(
+            "EXCEL_GRAPH_FILE",
+            "EXCEL_ID_MAP_FILE"
+        )
+
+        print(f".........debug: Using UI graph file: {ui_graph_file}")
+        print(f".........debug: Using ID map file: {ui_graph_id_map_file}")
+
+        # Get the parameters (JSON) of the visit call from LLM output
+        print(".........debug in visitcommand: application_window:", application_window)
+        target_funcs = self.params.get("target_funcs", [])
+        print(".........debug in visitcommand: target_funcs:", target_funcs)
+        return self.receiver.visit(target_funcs, application_window, ui_graph_file, ui_graph_id_map_file)
+
+    @classmethod
+    def name(cls) -> str:
+        """
+        The name of the command.
+        """
+        return "visit"

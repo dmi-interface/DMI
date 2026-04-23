@@ -39,11 +39,11 @@ system: |-
   Please take a deep breath and think step by step. Observe the screenshots carefully and analyze the agent's execution trajectory, do not miss any minor details. Especially details that may affect the sub-scoring points and the overall evaluation.
   Rethink your response before submitting it.
   Your judgment is very important to improve the agent's performance. I will tip you 200$ if you provide a detailed, correct and high-quality evaluation. Thank you for your hard work!
-  
+  Return a valid json object only.
 user: |-
   <Original Request:> {request}
   <Execution Trajectory:> {trajectory}
-
+  Return a valid json object only.
   <Your response:>
 
 

@@ -144,6 +144,7 @@ class AppAgent(BasicAgent):
         appagent_prompt_system_message = self.prompter.system_prompt_construction(
             dynamic_examples
         )
+        # print("!!!!!!!!!!!debug: System message for AppAgent:\n", appagent_prompt_system_message)
 
         appagent_prompt_user_message = self.prompter.user_content_construction(
             image_list=image_list,
@@ -167,7 +168,8 @@ class AppAgent(BasicAgent):
         appagent_prompt_message = self.prompter.prompt_construction(
             appagent_prompt_system_message, appagent_prompt_user_message
         )
-
+        # print("!!!!!!!!!!!debug: User message for AppAgent:\n", appagent_prompt_user_message)
+        # print("!!!!!!!!!!!debug: Prompt control_item message for AppAgent:\n", control_info)
         return appagent_prompt_message
 
     def print_response(

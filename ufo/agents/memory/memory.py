@@ -41,7 +41,7 @@ class MemoryItem:
         Convert the memory item to a JSON string.
         :return: The JSON string.
         """
-        return json.dumps(self.to_dict())
+        return json.dumps(self.to_dict(), ensure_ascii=False)
 
     def filter(self, keys: List[str] = []) -> None:
         """
@@ -163,7 +163,7 @@ class Memory:
         """
 
         return json.dumps(
-            [item.to_dict() for item in self._content if item is not None]
+            [item.to_dict() for item in self._content if item is not None], ensure_ascii=False
         )
 
     def to_list_of_dicts(self) -> List[Dict[str, str]]:

@@ -1,30 +1,78 @@
-set_background_color:
+visit:
   summary: |-
-    "set_background_color" is a fast way to set the background color of one or more slides in a PowerPoint presentation. You should use this API to save your work since it is more efficient than using UI.
-  class_name: |-
-    SetBackgroundColorCommand
-  usage: |-
-    [1] API call: set_background_color(color: str, slide_index: List[int] = None) 
-    [2] Args:
-      - color: The hex color code (in RGB format) to set the background color.
-      - slide_index: The list of slide indexes to set the background color. If None, set the background color for all slides.
-    [3] Example: set_background_color(color="FFFFFF", slide_index=[1, 2, 3])
-    [4] Available control item: Any control item in the PowerPoint app.
-    [5] Return: A message indicating the success or failure of setting the background color.
+    
+    You are a PowerPoint application expert, highly familiar with the control structure of PowerPoint on Windows 11. Note that the Office version is the latest Microsoft 365.
+    You will be given a PowerPoint control navigation tree. This tree shows the transition relationships among controls and has been processed into a tree format. Note that there may be a forest with multiple trees: one main tree whose root node is Root, plus other subtrees. The subtrees in the forest extract part of the common structure from the original graph to reduce the tree size. Each control in the tree is formatted as: name_numericid[children], where the numeric id is the unique identifier of the control. Controls with [children] are non-leaf nodes; those without are leaf nodes. The system will automatically navigate to the control you specify; you only need to indicate the target control.
+  
+    The subtree information is as follows: {va_subtree_info}    
+    
+    
+    The navigation tree is as follows: {va_prompt}
 
 
-save_as:
-  summary: |-
-    "save_as" is the fastest way to save or export the PowerPoint presentation to a specified file format with one command. You should use this API to save your work since it is more efficient than manually saving the document.
+    When the user requests that a task be performed in PowerPoint, please follow these rules:
+    When using visit, the most critical thing is to output the target_funcs parameter in it (this is the only parameter; there are no others). Below is how to construct the target_funcs parameter.
+    0. Controls are divided into navigation controls (non-leaf nodes) and functional controls (leaf nodes). Your task is to fulfill the user's request. Note that you only need to identify the functional controls; you do not need to handle navigation, because the solver will automatically complete the navigation based on your output. Therefore, you do not need to output navigation controls.
+    Completing the task may first require selecting the object to be operated on, which can be done through functional controls or other methods. Identifying the object to be operated on may require combining actual image information.
+    The app's prior usage state may be random, and the initially selected object may not meet your requirements. Note that you will receive a screenshot: the left side is the original image, and the right side is the current screen with controls annotated with labels.
+    Please note that the annotated labels have nothing to do with the ids in the control navigation tree; the letter labels in the screenshot are only for helping you perceive what content is currently on the screen.
+    You will also receive a control_info for the current screen. The labels in it are the labels in the image and likewise have nothing to do with the ids in the control navigation tree.
+
+    1. Identify the functional controls (leaf nodes) needed to accomplish the task. More than one functional control may be required. You can determine the function of these controls from the navigation path (ancestor) of the functional control and its own description (if any).
+    2. Output the ID of the final functional control(s) (leaf nodes) to be accessed. You do not need to care about the starting point, nor do you need to list navigation nodes or shortcut keys to "walk the path"; simply declare the functional control(s) to be accessed. Navigation mechanism explanation: when you declare that a functional control is to be accessed, the system (solver) will automatically use GUI interaction to navigate to and access that functional control based on the app's current interface and the access path of that leaf node. This also means that outputting a series of intermediate controls or shortcut keys to indicate how to reach this control is unnecessary; the solver does that automatically. Please note that the system will automatically filter out non-leaf controls, but you should still try to output only the IDs of the target functional controls.
+    Here, "accessing a control" is defined as follows: when you output the id of a leaf-node control, the solver will navigate (specifically via left mouse click) to the target control and then left-click the target control. Please pay special attention that some controls are toggle controls, so your access to the control depends on the control's own state; you may need to access the same control multiple times to achieve your goal.
+    Note that if the target control is on a subtree, then outputting only the target control id itself cannot uniquely determine the path. When the target is on a subtree, you must provide the entry_ref_id together with it (which is also a leaf node). The entry_ref_id must be in entry_ref_whitelist. There may also be refs inside a subtree that point to another subtree. The order of items in entry_ref_id is, from left to right, the ref in the main tree, then the ref in the subtree, and so on;    
+    Example 1 (correct)
+    Control tree: A_1[B_2, C_3[D_4]], E_5  Requirement: click D  Output → [4]
+    Example 2 (wrong❌)
+    Output → [1,3,4]   ← 1 and 3 are not leaf nodes and do not need to be output. Your target is to access 4. Although the prerequisites for accessing 4 are to access 1 and 3 in sequence, outputting 1 and 3 is unnecessary; the solver will use UI interaction to navigate to 4. You only need to declare which control to access (the target control), not how to "walk the path" to access it. Here is an explanation of what access means. When you declare a control to be accessed, the solver will first intelligently navigate to the target control by combining the current interface and the control's path. It will use click_input rather than invoke, and you should note that the effects of these two actions may differ. Finally, it will operate on the target control, using click_input by default, and falling back to invoke when the control is available but not visible (for example, when there is a scrollbar in a dropdown menu). If you output a functional control, the solver will first complete the navigation and then use click_input to access that control.
+    3. Output the complete numeric ID sequence of the controls in the form of a JSON array, arranged in the correct access order. If only 1 control is needed, directly output [controlID], for example [1], and write the object as `{"id": <number>}`. Do not include any explanatory text; only output the control ID array. If the operation requires multiple independent steps (that is, multiple leaf nodes need to be accessed), then the ID sequence for each step should be listed separately.
+    4. For controls labeled as Edit (with an Edit field before the id), you must not only output the id, but also the text to be entered and overwritten. Write the object as `{"id": <number>, "text": "<text to input>"}`. The text field should contain the original text and does not require extra escaping. Assign it directly as the JSON parameter value.
+    5. You may use shortcut keys. Please be sure to note that shortcut keys have not been verified, so they are prone to errors. Use shortcut keys only when necessary. If the controls provided by the navigation tree can accomplish the task, do not use shortcut keys. Special keys are represented using their virtual key codes. For example, "{VK_CONTROL}c" represents the Ctrl+C shortcut.
+    Example 1 (correct) Copy the selected text
+    {"shortcut_key": "{VK_CONTROL}c"}
+    Example 2 (correct) Press the Tab key twice consecutively
+    {"shortcut_key": "{TAB 2}"}
+    Example 3 (correct) Press the =/+ key
+    {"shortcut_key": "="}
+    Example 3.5 (wrong) SHIFT + '=/+' key
+    {"shortcut_key": "{VK_SHIFT}+"}
+    Example 3.6 (correct) SHIFT + '=/+' key
+    {"shortcut_key": "{VK_SHIFT}="}
+    Example 4 (correct) Press the + key
+    {"shortcut_key": "+"}
+    Example 5 (correct) Press the - key
+    {"shortcut_key": "-"}
+    Example 6 (correct) Press the alt key
+    {"shortcut_key": "{VK_MENU}"}
+    Example 7 (wrong) Press the alt key 
+    {"shortcut_key": "%"} <- % will be transferred into {%}
+    Example 8 (correct) Press the alt key
+    {"shortcut_key": "{VK_MENU}"} 
+    Note that if you output multiple consecutive shortcut_key items instead of putting them into one, they will be treated as multiple independent shortcut-key operations rather than one key combination. Each independent shortcut key will have a 0.3s interval.
+    6. A modal dialog blocks access to elements outside the dialog. If a control is inside a dialog, you need to close or confirm the dialog through controls such as OK/Close before you can access controls outside the dialog.
+    7. The output format must be a single valid JSON document: the top level is an array, and the elements are arranged in execution order. Format: normal click: {"id": <number>}, Edit control: {"id": <number>, "text": "<text to input>"}, shortcut key: {"shortcut_key": "<key combination / key>"}
+    **Examples**
+    - Click: [{"id": 4}]
+    - Enter Hello in Edit 9, then click 12: [{"id": 9, "text": "Hello"}, {"id": 12}]
+    - Click only: [{"id": 20}]
+    - Click only: `[500]`, but 500 is on a subtree, the subtree root node is 450, and currently 97, 105, 109, and 206 are refs pointing to the root node of the tree where 500 is located. You currently need to start from ref 109 to access 500
+      [{"id": 500, "entry_ref_id": [109]}]
+    Output must be in JSON format; it is not allowed to output control ids in a non-JSON format.
+    8. Other than the JSON body, **do not output any explanatory text or comments**.
+    9. Do not act on your own initiative. If you are not instructed to save elsewhere, then save in place by default. If you need to choose a save type, prefer using a dropdown rather than a combobox. Save changes only when explicitly instructed.
+    10. If there are multiple solutions to a task, choose the one you believe is the most reliable and has the highest success rate.
+    11. Please note that the navigation tree/forest is incomplete. If you need to use a control in the topology, but you also need to use a control that appears only after accessing that control (but that latter control should have been in the graph but is not), then you need to be cautious: you may cautiously access the existing control in the graph first, and then decide the next step based on what appears after that access.
+
   class_name: |-
-    SaveAsCommand
+    VisitCommand
   usage: |-
-    [1] API call: save_as(file_dir: str = "", file_name: str = "", file_ext: str = "", current_slide_only: bool = False) 
+    [1] visit API call: visit(target_funcs: List[Dict])
     [2] Args:
-      - file_dir: The directory to save the file. If not specified, the current directory will be used.
-      - file_name: The name of the file without extension. If not specified, the name of the current document will be used.
-      - file_ext: The extension of the file. If not specified, the default extension is ".pptx".
-      - current_slide_only: This only applies to ".jpg", ".png", ".gif", ".bmp" and ".tiff" formats. If True, only the current slide will be saved to a PNG file. If False, all slides will be saved into a directory containing multiple PNG files.
-    [3] Example: save_as(file_dir="", file_name="", file_ext=".pdf")
-    [4] Available control item: Any control item in the PowerPoint app.
-    [5] Return: A message indicating the success or failure of saving the document.
+      - The target_funcs operation sequence in JSON-array form. Each element can be:
+        * Normal click: {"id": <number>}
+        * Edit control input: {"id": <number>, "text": "<text content>"}
+        * Shortcut key: {"shortcut_key": "<key combination>"}
+    [3] Example: visit(target_funcs=[{"id": 123}, {"id": 456, "text": "Hello"}, {"shortcut_key": "{VK_CONTROL}s"}])
+    [4] Available control item: see navigation_tree
+    [5] Return: A string of the execution result and key execution logs.

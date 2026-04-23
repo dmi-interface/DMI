@@ -763,7 +763,7 @@ class BaseProcessor(ABC):
         return: The response json.
         """
 
-        self.logger.info(json.dumps(response_json))
+        self.logger.info(json.dumps(response_json, ensure_ascii=False))
 
     @property
     def name(self) -> str:

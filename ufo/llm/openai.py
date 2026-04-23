@@ -45,110 +45,343 @@ class BaseOpenAIService(BaseService):
             aad_tenant_id=self.config_llm.get("AAD_TENANT_ID", ""),
         )
 
+    def _map_response_format_to_text_spec(self, response_format: Optional[Dict[str, Any]]):
+        """
+        Map the Chat Completions response_format to the Responses API text spec (object).
+        Supported mappings:
+          - {"type":"json_object"}  -> {"format": {"type": "json_object"}}
+          - {"type":"json_schema", "json_schema" or "schema": {...}, "name": "..."}
+                                   -> {"format": {"type": "json_schema", "json_schema": {...}, "name": "..."}}
+        Other / None -> None (text field not sent)
+        """
+        if not isinstance(response_format, dict):
+            return None
+
+        rft = response_format.get("type")
+
+        if rft == "json_object":
+            # Fix: must be json_object, not "json"
+            return {"format": {"type": "json_object"}}
+
+        if rft == "json_schema":
+            schema = response_format.get("json_schema") or response_format.get("schema")
+            name = response_format.get("name") or "structured_output"
+            if schema:
+                return {"format": {"type": "json_schema", "json_schema": schema, "name": name}}
+            return None
+
+        # Optional: allow explicit plain-text request
+        if rft == "text":
+            return {"format": {"type": "text"}}
+
+        return None
+
+    def _convert_messages_to_responses_input_and_instructions(
+            self, messages: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """
+        Convert Chat Completions messages to Responses API input + instructions.
+        - system text is merged into instructions
+        - user/assistant messages are kept in input, with content split into typed segments:
+            * text   -> {"type":"input_text"/"output_text","text":...}
+            * image  -> {"type":"input_image","image_url": "<URL or dataURL string>"} (user only; assistant images are skipped)
+        """
+        instructions_parts: List[str] = []
+        input_msgs: List[Dict[str, Any]] = []
+
+        def _part_text(part: Any) -> str:
+            if isinstance(part, dict):
+                return part.get("text") or part.get("content") or ""
+            return str(part)
+
+        def _extract_image_url_value(image_url_field: Any) -> Optional[str]:
+            """
+            In Chat Completions, the common form is {"image_url": {"url": "...", "detail": "high"}}.
+            Responses API requires a **string**, so extract the url from the object.
+            Also accepts a plain string or data URL directly.
+            """
+            if isinstance(image_url_field, str):
+                return image_url_field
+            if isinstance(image_url_field, dict):
+                # Common field name is url; other fields (e.g. detail) are not supported in Responses and are discarded
+                return image_url_field.get("url") or image_url_field.get("data")
+            return None
+
+        for m in messages:
+            role = m.get("role")
+            content = m.get("content", "")
+
+            # 1) system -> instructions (text only)
+            if role == "system":
+                if isinstance(content, str):
+                    if content:
+                        instructions_parts.append(content)
+                elif isinstance(content, list):
+                    for part in content:
+                        if isinstance(part, dict) and part.get("type") in ("text", "input_text", "output_text"):
+                            txt = _part_text(part)
+                            if txt:
+                                instructions_parts.append(txt)
+                else:
+                    instructions_parts.append(str(content))
+                continue
+
+            # 2) Keep only user / assistant
+            if role not in ("user", "assistant"):
+                continue
+
+            content_items: List[Dict[str, Any]] = []
+            text_type = "input_text" if role == "user" else "output_text"
+
+            if isinstance(content, str):
+                content_items.append({"type": text_type, "text": content})
+
+            elif isinstance(content, list):
+                for part in content:
+                    if not isinstance(part, dict):
+                        content_items.append({"type": text_type, "text": str(part)})
+                        continue
+
+                    ptype = part.get("type")
+
+                    if ptype in ("text", "input_text", "output_text"):
+                        txt = _part_text(part)
+                        content_items.append({"type": text_type, "text": txt})
+
+                    elif ptype in ("image_url", "input_image"):
+                        url_val = _extract_image_url_value(part.get("image_url"))
+                        # Only user images are treated as input; assistant images are skipped
+                        if role == "user" and url_val:
+                            content_items.append({"type": "input_image", "image_url": url_val})
+
+                    else:
+                        # Fallback for unknown types: treat as text
+                        content_items.append({"type": text_type, "text": _part_text(part)})
+            else:
+                content_items.append({"type": text_type, "text": str(content)})
+
+            input_msgs.append({"role": role, "content": content_items})
+
+        out: Dict[str, Any] = {"input": input_msgs}
+        if instructions_parts:
+            out["instructions"] = "\n".join(instructions_parts)
+        return out
+
+    def _log_reasoning_from_response(self, response: Any) -> None:
+        """
+        Extract and print reasoning text from a non-streaming response.
+        Fault-tolerant data structure handling: first looks for output[*].type == 'reasoning',
+        then extracts .text from summary/content/steps/explanations fields.
+        """
+        try:
+            outputs = getattr(response, "output", []) or []
+            for item in outputs:
+                if getattr(item, "type", None) == "reasoning":
+                    blocks = []
+                    for field in ("summary", "content", "steps", "explanations"):
+                        seq = getattr(item, field, None)
+                        if isinstance(seq, list):
+                            for b in seq:
+                                t = getattr(b, "text", None)
+                                if not t and isinstance(b, str):
+                                    t = b
+                                if t:
+                                    blocks.append(t)
+                    if blocks:
+                        print("=== REASONING ===")
+                        for t in blocks:
+                            print(t)
+                        print("=== END REASONING ===")
+
+        except Exception:
+            # Fail silently to avoid disrupting the main flow
+            pass
+
     def _chat_completion(
-        self,
-        messages: List[Dict[str, str]],
-        stream: bool = False,
-        temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None,
-        top_p: Optional[float] = None,
-        **kwargs: Any,
+            self,
+            messages: List[Dict[str, str]],
+            stream: bool = False,
+            temperature: Optional[float] = None,
+            max_tokens: Optional[int] = None,
+            top_p: Optional[float] = None,
+            **kwargs: Any,
     ) -> Tuple[Dict[str, Any], Optional[float]]:
         """
-        Generates completions for a given conversation using the OpenAI Chat API.
-        :param messages: The list of messages in the conversation.
-        :param n: The number of completions to generate.
-        :param stream: Whether to stream the API response.
-        :param temperature: The temperature parameter for randomness in the output.
-        :param max_tokens: The maximum number of tokens in the generated completion.
-        :param top_p: The top-p parameter for nucleus sampling.
-        :param kwargs: Additional keyword arguments to pass to the OpenAI API.
-        :return: A tuple containing a list of generated completions and the estimated cost.
-        :raises: Exception if there is an error in the OpenAI API request
+        Use the OpenAI Responses API while preserving behavior equivalent to Chat Completions:
+        - Reasoning branch: temperature/top_p/max_tokens are not set; always runs with background=True (store=True).
+          In non-streaming mode, internally polls until completion (default 6-minute timeout,
+          overridable via background_timeout_s / background_poll_interval_s).
+        - Non-reasoning branch: the above parameters are set; background is not handled.
+        - Returns ([text], cost).
         """
+        import time
 
         model = self.config_llm["API_MODEL"]
 
-        temperature = (
-            temperature if temperature is not None else self.config["TEMPERATURE"]
-        )
-        max_tokens = max_tokens if max_tokens is not None else self.config["MAX_TOKENS"]
+        # Default sampling parameters for the non-reasoning branch (equivalent to original logic)
+        temperature = temperature if temperature is not None else self.config["TEMPERATURE"]
         top_p = top_p if top_p is not None else self.config["TOP_P"]
+        max_output_tokens = max_tokens if max_tokens is not None else self.config["MAX_TOKENS"]
+
+        # Background polling parameters used only in the reasoning branch (default: 6 min / 2 sec)
+        background_timeout_s: int = int(kwargs.pop("background_timeout_s", 360))
+        background_poll_interval_s: float = float(kwargs.pop("background_poll_interval_s", 2.0))
+
+        # 1) Convert messages -> input + instructions (including rich content splitting)
+        converted = self._convert_messages_to_responses_input_and_instructions(messages)
+        input_payload = converted.get("input", [])
+        instructions = converted.get("instructions", None)
+
+        # 2) Structured output compatibility: response_format -> text.format (object)
+        rf = kwargs.pop("response_format", None)
+        text_spec = self._map_response_format_to_text_spec(rf)
+
+        # stream_options from Chat Completions is not valid in Responses API
+        kwargs.pop("stream_options", None)
 
         try:
+            # =========================
+            #      REASONING BRANCH (always background)
+            # =========================
             if self.config_llm.get("REASONING_MODEL", False):
-                response: Any = self.client.chat.completions.create(
+                # Equivalent to original logic: no temperature/length params; always runs in background
+                request_kwargs = dict(
                     model=model,
-                    messages=messages,  # type: ignore
-                    n=1,
+                    reasoning={
+                        "summary": "auto",
+                        "effort": self.config_llm.get("REASONING_EFFORT", "medium")
+                        # "effort": "medium"
+                    },
+                    input=input_payload,
+                    background=True,  # Always background
+                    store=True,       # Required for background
                     stream=stream,
                     **kwargs,
                 )
-            else:
-                if not stream:
-                    response: Any = self.client.chat.completions.create(
-                        model=model,
-                        messages=messages,  # type: ignore
-                        n=1,
-                        temperature=temperature,
-                        max_tokens=max_tokens,
-                        top_p=top_p,
-                        stream=stream,
-                        **kwargs,
-                    )
-                else:
-                    response: Any = self.client.chat.completions.create(
-                        model=model,
-                        messages=messages,  # type: ignore
-                        n=1,
-                        temperature=temperature,
-                        max_tokens=max_tokens,
-                        top_p=top_p,
-                        stream=stream,
-                        stream_options={
-                            "include_usage": True,
-                        },
-                        **kwargs,
-                    )
-            # response: Any = self.client.chat.completions.create(
-            #     model=model,
-            #     messages=messages,  # type: ignore
-            #     n=n,
-            #     # temperature=temperature,
-            #     # max_tokens=max_tokens,
-            #     # top_p=top_p,
-            #     stream=stream,
-            #     **kwargs,
-            # )
+                if instructions:
+                    request_kwargs["instructions"] = instructions
+                if text_spec:
+                    request_kwargs["text"] = text_spec
 
+                response: Any = self.client.responses.create(**request_kwargs)
+
+                # Background + streaming: consume events directly
+                if stream:
+                    collected_content = [""]
+                    total_in = total_out = 0
+                    for event in response:
+                        et = getattr(event, "type", None)
+                        if et == "response.output_text.delta":
+                            delta = getattr(event, "delta", None)
+                            if delta:
+                                collected_content[0] += delta
+                        elif et == "response.completed":
+                            resp_obj = getattr(event, "response", None)
+                            if resp_obj and getattr(resp_obj, "usage", None):
+                                total_in += getattr(resp_obj.usage, "input_tokens", 0)
+                                total_out += getattr(resp_obj.usage, "output_tokens", 0)
+                        elif et == "response.error":
+                            err = getattr(event, "error", "Unknown error")
+                            raise Exception(f"Streaming error: {err}")
+                    cost = self.get_cost_estimator(self.api_type, model, self.prices, total_in, total_out)
+                    return collected_content, cost
+
+                # Background + non-streaming: poll until completed or timed out
+                start = time.time()
+                status = getattr(response, "status", None)
+                resp_id = getattr(response, "id", None)
+                while status in ("queued", "in_progress"):
+                    if time.time() - start > background_timeout_s:
+                        try:
+                            if resp_id:
+                                self.client.responses.cancel(resp_id)
+                        except Exception:
+                            pass
+                        raise Exception(f"Background response timed out after {background_timeout_s} seconds.")
+                    time.sleep(background_poll_interval_s)
+                    response = self.client.responses.retrieve(resp_id)
+                    status = getattr(response, "status", None)
+                if status not in ("completed", "incomplete"):
+                    raise Exception(f"Background response ended with status '{status}'.")
+
+                # Non-streaming: finalize after background polling completes
+                output_text = getattr(response, "output_text", None)
+                if output_text is None:
+                    output_text = ""
+                    for out in getattr(response, "output", []):
+                        if getattr(out, "type", "") == "message":
+                            for c in getattr(out, "content", []):
+                                if getattr(c, "type", "") in ("output_text", "input_text"):
+                                    output_text += getattr(c, "text", "") or ""
+                usage = getattr(response, "usage", None)
+                input_tokens = getattr(usage, "input_tokens", 0) if usage else 0
+                output_tokens = getattr(usage, "output_tokens", 0) if usage else 0
+                cost = self.get_cost_estimator(self.api_type, model, self.prices, input_tokens, output_tokens)
+                try:
+                    self._log_reasoning_from_response(response)
+                except Exception:
+                    pass
+                return [output_text], cost
+
+            # =========================
+            #     NON-REASONING BRANCH (no background)
+            # =========================
+            # Ensure background-related parameters are not passed to the API
+            kwargs.pop("background", None)
+            kwargs.pop("background_timeout_s", None)
+            kwargs.pop("background_poll_interval_s", None)
+
+            request_kwargs = dict(
+                model=model,
+                input=input_payload,
+                stream=stream,
+                temperature=temperature,
+                top_p=top_p,
+                max_output_tokens=max_output_tokens,
+                **kwargs,
+            )
+            if instructions:
+                request_kwargs["instructions"] = instructions
+            if text_spec:
+                request_kwargs["text"] = text_spec
+
+            response: Any = self.client.responses.create(**request_kwargs)
+
+            # Streaming
             if stream:
                 collected_content = [""]
-
-                for chunk in response:
-                    if chunk.choices:
-                        delta = chunk.choices[0].delta
-                        if delta and delta.content:
-                            collected_content[0] += delta.content
-                    else:
-                        usage = chunk.usage
-
-                prompt_tokens = usage.prompt_tokens
-                completion_tokens = usage.completion_tokens
-
-                cost = self.get_cost_estimator(
-                    self.api_type, model, self.prices, prompt_tokens, completion_tokens
-                )
+                total_in = total_out = 0
+                for event in response:
+                    et = getattr(event, "type", None)
+                    if et == "response.output_text.delta":
+                        delta = getattr(event, "delta", None)
+                        if delta:
+                            collected_content[0] += delta
+                    elif et == "response.completed":
+                        resp_obj = getattr(event, "response", None)
+                        if resp_obj and getattr(resp_obj, "usage", None):
+                            total_in += getattr(resp_obj.usage, "input_tokens", 0)
+                            total_out += getattr(resp_obj.usage, "output_tokens", 0)
+                    elif et == "response.error":
+                        err = getattr(event, "error", "Unknown error")
+                        raise Exception(f"Streaming error: {err}")
+                cost = self.get_cost_estimator(self.api_type, model, self.prices, total_in, total_out)
                 return collected_content, cost
-            else:
-                usage = response.usage
-                prompt_tokens = usage.prompt_tokens
-                completion_tokens = usage.completion_tokens
 
-                cost = self.get_cost_estimator(
-                    self.api_type, model, self.prices, prompt_tokens, completion_tokens
-                )
-
-                return [response.choices[0].message.content], cost
+            # Non-streaming
+            output_text = getattr(response, "output_text", None)
+            if output_text is None:
+                output_text = ""
+                for out in getattr(response, "output", []):
+                    if getattr(out, "type", "") == "message":
+                        for c in getattr(out, "content", []):
+                            if getattr(c, "type", "") in ("output_text", "input_text"):
+                                output_text += getattr(c, "text", "") or ""
+            usage = getattr(response, "usage", None)
+            input_tokens = getattr(usage, "input_tokens", 0) if usage else 0
+            output_tokens = getattr(usage, "output_tokens", 0) if usage else 0
+            cost = self.get_cost_estimator(self.api_type, model, self.prices, input_tokens, output_tokens)
+            return [output_text], cost
 
         except openai.APITimeoutError as e:
             # Handle timeout error, e.g. retry or log
@@ -570,7 +803,7 @@ class OpenAIBetaClient:
 
         headers = {**headers, "content-type": "application/json"}
 
-        data = json.dumps(self.compact(data)).encode("utf-8")
+        data = json.dumps(self.compact(data), ensure_ascii=False).encode("utf-8")
 
         req = urllib.request.Request(url, data=data, headers=headers, method="POST")
 
@@ -737,4 +970,4 @@ class OpenAIError(Exception):
         super().__init__(f"OpenAI API error: {status_code} {message}")
 
     def __str__(self):
-        return f"OpenAI API error: {self.request_id} {self.status_code} {json.dumps(self.message, indent=2)}"
+        return f"OpenAI API error: {self.request_id} {self.status_code} {json.dumps(self.message, ensure_ascii=False, indent=2)}"

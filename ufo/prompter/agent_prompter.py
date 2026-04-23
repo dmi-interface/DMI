@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional
 
 from ufo.config.config import Config
 from ufo.prompter.basic import BasicPrompter
+import ufo.automator.ui_control.dmi as ui_nav
 
 configs = Config.get_instance().config_data
 
@@ -31,6 +32,7 @@ class HostAgentPrompter(BasicPrompter):
         """
         super().__init__(is_visual, prompt_template, example_prompt_template)
         self.api_prompt_template = self.load_prompt_template(api_prompt_template)
+        # print("!!!!!!!!!!!!!!!!!!debug: host prompt_template", self.prompt_template)
 
     def system_prompt_construction(self) -> str:
         """
@@ -62,13 +64,13 @@ class HostAgentPrompter(BasicPrompter):
         return: The prompt for action selection.
         """
         prompt = self.prompt_template["user"].format(
-            control_item=json.dumps(control_item),
-            prev_plan=json.dumps(prev_plan),
-            prev_subtask=json.dumps(prev_subtask),
+            control_item=json.dumps(control_item, ensure_ascii=False),
+            prev_plan=json.dumps(prev_plan, ensure_ascii=False),
+            prev_subtask=json.dumps(prev_subtask, ensure_ascii=False),
             user_request=user_request,
             retrieved_docs=retrieved_docs,
         )
-
+        # print("..........................debug:host agent user prompt is",prompt)
         return prompt
 
     def user_content_construction(
@@ -112,7 +114,7 @@ class HostAgentPrompter(BasicPrompter):
                 ),
             }
         )
-
+        # print("!!!!!!!!!!debug: User content constructed:", user_content)
         return user_content
 
     def examples_prompt_helper(
@@ -137,7 +139,7 @@ class HostAgentPrompter(BasicPrompter):
             if key.startswith("example"):
                 example = template.format(
                     request=values.get("Request"),
-                    response=json.dumps(values.get("Response")),
+                    response=json.dumps(values.get("Response"), ensure_ascii=False),
                 )
                 example_list.append(example)
 
@@ -202,7 +204,7 @@ class AppAgentPrompter(BasicPrompter):
         self.api_prompt_template = self.load_prompt_template(api_prompt_template)
 
         self.app_api_prompt_template = None
-
+        # print("!!!!!!!!!!!!!!!!!!debug: app prompt template", self.prompt_template)
         if configs.get("USE_APIS", False):
             self.app_api_prompt_template = self.app_prompter.load_api_prompt()
 
@@ -222,7 +224,7 @@ class AppAgentPrompter(BasicPrompter):
             system_key = "system"
         if not self.is_visual:
             system_key += "_nonvisual"
-
+        # print("!!!!!!!!!!!!!!!!!!debug: app system prompt key", system_key)
         return self.prompt_template[system_key].format(apis=apis, examples=examples)
 
     def user_prompt_construction(
@@ -252,15 +254,15 @@ class AppAgentPrompter(BasicPrompter):
         return: The prompt for action selection.
         """
         prompt = self.prompt_template["user"].format(
-            control_item=json.dumps(control_item),
-            prev_subtask=json.dumps(prev_subtask),
-            prev_plan=json.dumps(prev_plan),
+            control_item=json.dumps(control_item, ensure_ascii=False),
+            prev_subtask=json.dumps(prev_subtask, ensure_ascii=False),
+            prev_plan=json.dumps(prev_plan, ensure_ascii=False),
             user_request=user_request,
             subtask=subtask,
             current_application=current_application,
-            host_message=json.dumps(host_message),
+            host_message=json.dumps(host_message, ensure_ascii=False),
             retrieved_docs=retrieved_docs,
-            last_success_actions=json.dumps(last_success_actions),
+            last_success_actions=json.dumps(last_success_actions, ensure_ascii=False),
         )
 
         return prompt
@@ -299,7 +301,7 @@ class AppAgentPrompter(BasicPrompter):
 
             screenshot_text = []
             if include_last_screenshot:
-                screenshot_text += ["Screenshot for the last step:"]
+                screenshot_text += ["Screenshot for the last step:(上一步动作执行前的截图)"]
 
             screenshot_text += ["Current Screenshots:", "Annotated Screenshot:"]
 
@@ -370,7 +372,7 @@ class AppAgentPrompter(BasicPrompter):
                 request=example.get("Request"),
                 subtask=example.get("Sub-task"),
                 tips=example.get("Tips"),
-                response=json.dumps(example.get("Response")),
+                response=json.dumps(example.get("Response"), ensure_ascii=False),
             )
             example_list.append(example_str)
 
@@ -413,7 +415,7 @@ class AppAgentPrompter(BasicPrompter):
 
         # Construct the prompt for each UI control action.
         api_list = [
-            "- The action types for UI elements are: {actions}.".format(
+            "- The action types for UI elements are (For complex interactions with controls, use the declarative interfaces whenever possible. If you need to perform complex interactions with controls, prefer the declarative interfaces. If you need to navigate in order to access certain controls, prefer visit): {actions}.".format(
                 actions=list(self.api_prompt_template.keys())
             )
         ]
@@ -433,7 +435,9 @@ class AppAgentPrompter(BasicPrompter):
         if self.app_api_prompt_template:
 
             api_list += [
-                "- There are additional shortcut APIs for your operations. You should **prioritize** using these APIs if they are available since they are more reliable and efficient. The avaliable APIs are: {apis}".format(
+                "- There is visit interface available for your operations. "
+                "You should **prioritize** using 'visit' since visit is more reliable and efficient. "
+                "use visit as follows:{apis}".format(
                     apis=list(self.app_api_prompt_template.keys())
                 )
             ]
@@ -550,16 +554,16 @@ class FollowerAgentPrompter(AppAgentPrompter):
         return: The prompt for action selection.
         """
         prompt = self.prompt_template["user"].format(
-            control_item=json.dumps(control_item),
-            prev_subtask=json.dumps(prev_subtask),
-            prev_plan=json.dumps(prev_plan),
+            control_item=json.dumps(control_item, ensure_ascii=False),
+            prev_subtask=json.dumps(prev_subtask, ensure_ascii=False),
+            prev_plan=json.dumps(prev_plan, ensure_ascii=False),
             user_request=user_request,
             subtask=subtask,
             current_application=current_application,
-            host_message=json.dumps(host_message),
+            host_message=json.dumps(host_message, ensure_ascii=False),
             retrieved_docs=retrieved_docs,
-            current_state=json.dumps(current_state),
-            state_diff=json.dumps(state_diff),
+            current_state=json.dumps(current_state, ensure_ascii=False),
+            state_diff=json.dumps(state_diff, ensure_ascii=False),
         )
 
         return prompt
@@ -602,7 +606,7 @@ class FollowerAgentPrompter(AppAgentPrompter):
 
             screenshot_text = []
             if include_last_screenshot:
-                screenshot_text += ["Screenshot for the last step:"]
+                screenshot_text += ["Screenshot for the last step:(上一步动作执行前的截图)"]
 
             screenshot_text += ["Current Screenshots:", "Annotated Screenshot:"]
 
@@ -650,11 +654,62 @@ class APIPromptLoader:
         :return: The prompt template for COM APIs.
         """
         prompt_address = configs["APP_API_PROMPT_ADDRESS"].get(self.root_name, None)
-
-        if prompt_address:
-            return AppAgentPrompter.load_prompt_template(prompt_address, None)
-        else:
+        if not prompt_address:
             return {}
+
+        prompt = AppAgentPrompter.load_prompt_template(prompt_address, None)
+        if not prompt:
+            return {}
+
+        # 直接取 root_name 子 dict，按后缀匹配两个路径
+        app_nav = configs.get("UI_NAVIGATION", {}).get(self.root_name, {})
+        graph_path = next((v for k, v in app_nav.items() if k.endswith("_GRAPH_FILE")), "")
+        id_map_path = next((v for k, v in app_nav.items() if k.endswith("_ID_MAP_FILE")), "")
+        print("graph_path is:", graph_path)
+        print("id_map_path is:", id_map_path)
+        # 相对路径 → 绝对路径，以项目根目录为基准
+        import ufo as _ufo
+        import os
+        project_root = os.path.dirname(os.path.dirname(_ufo.__file__))
+
+        def to_abs(path: str) -> str:
+            if not path or os.path.isabs(path):
+                return path
+            return os.path.join(project_root, path.replace("/", os.sep))
+
+        graph_path = to_abs(graph_path)
+        id_map_path = to_abs(id_map_path)
+
+        va_prompt = ui_nav.export_compact_paths(graph_path)
+        va_subtree_info = ui_nav.build_entry_ref_data(graph_path, id_map_path)
+        # print("va_prompt is:", va_prompt)
+        # print("va_subtree_info is:", va_subtree_info)
+        res = self._fill_placeholders(prompt, {
+            "va_subtree_info": str(va_subtree_info) if va_subtree_info else "",
+            "va_prompt": str(va_prompt) if va_prompt else "",
+        })
+        # print(str(res))
+
+        return res
+
+    @staticmethod
+    def _fill_placeholders(obj: Any, replacements: Dict[str, str]) -> Any:
+        """
+        递归遍历 dict/list，对所有 str 值用 str.replace 替换占位符。
+        避免 format_map 被 {VK_CONTROL} 等其他花括号干扰。
+        """
+        if isinstance(obj, dict):
+            return {k: APIPromptLoader._fill_placeholders(v, replacements)
+                    for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [APIPromptLoader._fill_placeholders(item, replacements)
+                    for item in obj]
+        elif isinstance(obj, str):
+            for placeholder, value in replacements.items():
+                obj = obj.replace(f"{{{placeholder}}}", value)
+            return obj
+        else:
+            return obj
 
     @staticmethod
     def load_ui_api_prompt() -> Dict[str, str]:
